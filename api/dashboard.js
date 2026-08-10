@@ -2,6 +2,7 @@ import { gateGet, json } from "../lib/gate.js";
 
 const n = (value) => Number(value || 0);
 const PERFORMANCE_START = Math.floor(Date.parse("2026-07-01T00:00:00+09:00") / 1000);
+const PERFORMANCE_START_BALANCE = 10_000;
 const PERFORMANCE_TYPES = new Set(["pnl", "fee", "fund"]);
 const ACCOUNT_BOOK_LIMIT = 1000;
 const RANGE_SECONDS = 14 * 24 * 60 * 60;
@@ -47,10 +48,8 @@ async function loadAccountBook(from, to) {
   return [...unique.values()].sort((a, b) => n(a.time) - n(b.time));
 }
 
-export function calculatePerformance(book, fallbackBalance, endAt = Date.now()) {
-  const first = book[0];
-  const inferredStartBalance = first ? n(first.balance) - n(first.change) : fallbackBalance;
-  const startBalance = Number.isFinite(inferredStartBalance) ? inferredStartBalance : 0;
+export function calculatePerformance(book, endAt = Date.now()) {
+  const startBalance = PERFORMANCE_START_BALANCE;
   let netRealizedPnl = 0;
   let settlementPnl = 0;
   let fees = 0;
@@ -147,8 +146,7 @@ export default async function handler(req, res) {
 
     const unrealizedPnl = n(account.unrealised_pnl);
     const total = n(account.total);
-    const settledFallback = total - unrealizedPnl;
-    const performance = calculatePerformance(book, settledFallback);
+    const performance = calculatePerformance(book);
     return json(res, 200, {
       mode: "live",
       updatedAt: new Date().toISOString(),
