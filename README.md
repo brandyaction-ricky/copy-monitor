@@ -14,10 +14,10 @@ GateScope 기반 Gate.io 무기한 선물 포지션 대시보드입니다.
 ```bash
 GATE_API_KEY=
 GATE_API_SECRET=
-DASHBOARD_ACCESS_TOKEN=
 ```
 
 Gate.io 키는 선물 계좌 조회 권한만 허용하고, 출금 권한은 절대 활성화하지 마세요.
+대시보드 조회 API는 공개되어 있으므로 배포 주소를 아는 사용자는 잔고·포지션·체결 내역을 볼 수 있습니다.
 
 ## 로컬 실행
 

@@ -1,4 +1,4 @@
-import { gateGet, json, verifyDashboardAccess } from "../lib/gate.js";
+import { gateGet, json } from "../lib/gate.js";
 
 const n = (value) => Number(value || 0);
 const kstStartOfDay = () => {
@@ -11,9 +11,6 @@ const kstStartOfDay = () => {
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return json(res, 405, { error: "Method not allowed" });
-
-  const access = verifyDashboardAccess(req);
-  if (!access.ok) return json(res, access.status, { error: access.error });
 
   try {
     const [account, rawPositions, rawTrades, accountBook] = await Promise.all([

@@ -1,6 +1,6 @@
 const GATE_HOST = "https://api.gateio.ws/api/v4";
 
-const coinUniverse = ["BTC_USDT", "ETH_USDT", "SOL_USDT", "XRP_USDT", "DOGE_USDT", "BNB_USDT", "SUI_USDT", "LINK_USDT"];
+const coinUniverse = ["BTC_USDT", "ETH_USDT", "SOL_USDT", "XRP_USDT", "BNB_USDT", "HYPE_USDT"];
 const stockUniverse = [
   { symbol: "NVDA", name: "엔비디아", sector: "반도체" },
   { symbol: "AMD", name: "AMD", sector: "반도체" },
@@ -57,6 +57,11 @@ function normalizeGateCandles(rows) {
     .sort((a, b) => a.t - b.t);
 }
 
+function completedCandles(rows, intervalSeconds) {
+  const now = Date.now() / 1000;
+  return rows.filter((candle) => candle.t + intervalSeconds <= now);
+}
+
 async function gatePublic(path, params) {
   const query = new URLSearchParams(params).toString();
   const response = await fetch(`${GATE_HOST}${path}?${query}`, { headers: { Accept: "application/json" }, cache: "no-store" });
@@ -95,58 +100,142 @@ function findSweep(candles) {
   return null;
 }
 
-function analyzeCoin(symbol, candles15, candles1h, ticker) {
-  const closes15 = candles15.map((item) => item.c);
-  const closes1h = candles1h.map((item) => item.c);
-  const last = finite(ticker?.mark_price, closes15.at(-1));
-  const ema20h = ema(closes1h, 20).at(-1);
-  const ema50h = ema(closes1h, 50).at(-1);
-  const ema9m = ema(closes15, 9).at(-1);
-  const ema20m = ema(closes15, 20).at(-1);
-  const currentRsi = rsi(closes15);
-  const currentAtr = atr(candles15);
-  const hourlySpread = Math.abs(ema20h - ema50h) / last;
-  const hourlyDirection = hourlySpread < 0.0015 ? "WAIT" : ema20h > ema50h && last > ema20h ? "LONG" : ema20h < ema50h && last < ema20h ? "SHORT" : "WAIT";
-  const executionDirection = ema9m > ema20m ? "LONG" : ema9m < ema20m ? "SHORT" : "WAIT";
-  const direction = hourlyDirection !== "WAIT" && hourlyDirection === executionDirection ? hourlyDirection : "WAIT";
-  const fvg = direction === "WAIT" ? null : findFvg(candles15, direction, last);
-  const sweep = findSweep(candles15);
-  const recent = candles15.slice(-48);
+function trendSnapshot(candles, fastPeriod, slowPeriod, minimumSpread) {
+  const closes = candles.map((item) => item.c);
+  const last = closes.at(-1);
+  const fast = ema(closes, fastPeriod).at(-1);
+  const slow = ema(closes, slowPeriod).at(-1);
+  const spread = last ? Math.abs(fast - slow) / last : 0;
+  const direction = spread < minimumSpread
+    ? "WAIT"
+    : fast > slow && last > fast
+      ? "LONG"
+      : fast < slow && last < fast
+        ? "SHORT"
+        : "WAIT";
+  return { direction, fast, slow, spread };
+}
+
+function directionLabel(direction) {
+  return direction === "LONG" ? "상승" : direction === "SHORT" ? "하락" : "혼조";
+}
+
+function buildScenario({ style, direction, candles, last, fvg, score, actionable, trigger }) {
+  if (direction === "WAIT") {
+    return { style, verdict: "WAIT", candidateDirection: "WAIT", actionable: false, score, entry: null, stop: null, target1: null, target2: null, rr: 0, zone: null, trigger };
+  }
+  const currentAtr = atr(candles);
+  const closes = candles.map((item) => item.c);
+  const pullbackEma = ema(closes, 20).at(-1);
+  const recent = candles.slice(style === "SWING" ? -42 : -48);
   const swingHigh = Math.max(...recent.map((item) => item.h));
   const swingLow = Math.min(...recent.map((item) => item.l));
-  const entry = direction === "LONG" ? finite(fvg?.high, ema20m) : direction === "SHORT" ? finite(fvg?.low, ema20m) : last;
+  const fallbackEntry = direction === "LONG" ? Math.min(last, pullbackEma) : Math.max(last, pullbackEma);
+  const entry = direction === "LONG" ? finite(fvg?.high, fallbackEntry) : finite(fvg?.low, fallbackEntry);
   const stop = direction === "LONG"
-    ? Math.min(finite(fvg?.low, entry - currentAtr), entry - currentAtr * 1.1)
-    : direction === "SHORT"
-      ? Math.max(finite(fvg?.high, entry + currentAtr), entry + currentAtr * 1.1)
-      : null;
-  const risk = stop == null ? 0 : Math.abs(entry - stop);
-  let target1 = null;
-  let target2 = null;
-  if (direction === "LONG") {
-    target1 = swingHigh > entry + risk * 1.5 ? swingHigh : entry + risk * 1.8;
-    target2 = entry + risk * 2.8;
-  } else if (direction === "SHORT") {
-    target1 = swingLow < entry - risk * 1.5 ? swingLow : entry - risk * 1.8;
-    target2 = entry - risk * 2.8;
-  }
-  const rr = risk && target1 != null ? Math.abs(target1 - entry) / risk : 0;
-  const rsiOkay = direction === "LONG" ? currentRsi < 70 : direction === "SHORT" ? currentRsi > 30 : false;
+    ? Math.min(finite(fvg?.low, entry - currentAtr * 1.2), entry - currentAtr * 1.2)
+    : Math.max(finite(fvg?.high, entry + currentAtr * 1.2), entry + currentAtr * 1.2);
+  const risk = Math.abs(entry - stop);
+  const structuralTarget = direction === "LONG" ? swingHigh : swingLow;
+  const structuralReward = direction === "LONG" ? structuralTarget - entry : entry - structuralTarget;
+  const target1 = risk && structuralReward >= risk * 1.5 && structuralReward <= risk * 4
+    ? structuralTarget
+    : direction === "LONG" ? entry + risk * 1.8 : entry - risk * 1.8;
+  const target2 = direction === "LONG" ? entry + risk * 3 : entry - risk * 3;
+  const rr = risk ? Math.abs(target1 - entry) / risk : 0;
+  return {
+    style,
+    verdict: actionable ? direction : "WAIT",
+    candidateDirection: direction,
+    actionable,
+    score: Math.max(0, Math.min(100, Math.round(score))),
+    entry: round(entry, 6),
+    stop: round(stop, 6),
+    target1: round(target1, 6),
+    target2: round(target2, 6),
+    rr: round(rr, 2),
+    zone: fvg ? { low: round(fvg.low, 6), high: round(fvg.high, 6), type: "FVG" } : null,
+    trigger,
+  };
+}
+
+function analyzeCoin(symbol, candles15, candles1h, candles4h, candles1w, ticker) {
+  const closes15 = candles15.map((item) => item.c);
+  const last = finite(ticker?.mark_price, closes15.at(-1));
+  const weekly = trendSnapshot(candles1w, 10, 20, 0.008);
+  const fourHour = trendSnapshot(candles4h, 20, 50, 0.0025);
+  const oneHour = trendSnapshot(candles1h, 20, 50, 0.0015);
+  const fifteenMinute = trendSnapshot(candles15, 9, 20, 0.0006);
+  const currentRsi = rsi(closes15);
   const funding = finite(ticker?.funding_rate) * 100;
-  const fundingOkay = direction === "LONG" ? funding < 0.05 : direction === "SHORT" ? funding > -0.05 : false;
-  const actionable = direction !== "WAIT" && rr >= 1.5 && rsiOkay && fundingOkay;
+  const rsiOkay = (direction) => direction === "LONG" ? currentRsi < 70 : direction === "SHORT" ? currentRsi > 30 : false;
+  const fundingOkay = (direction) => direction === "LONG" ? funding < 0.05 : direction === "SHORT" ? funding > -0.05 : false;
+
+  const swingDirection = weekly.direction !== "WAIT" && weekly.direction === fourHour.direction ? weekly.direction : "WAIT";
+  const swingOneHourAligned = swingDirection !== "WAIT" && oneHour.direction === swingDirection;
+  const swingExecutionAligned = swingDirection !== "WAIT" && fifteenMinute.direction === swingDirection;
+  const swingFvg = swingDirection === "WAIT" ? null : findFvg(candles4h, swingDirection, last);
+  const swingScore = (weekly.direction !== "WAIT" ? 20 : 0)
+    + (swingDirection !== "WAIT" ? 30 : 0)
+    + (swingOneHourAligned ? 20 : oneHour.direction === "WAIT" ? 8 : 0)
+    + (swingExecutionAligned ? 15 : 0)
+    + (swingFvg ? 5 : 0)
+    + (rsiOkay(swingDirection) ? 5 : 0)
+    + (fundingOkay(swingDirection) ? 5 : 0);
+  const swingActionable = swingDirection !== "WAIT" && swingOneHourAligned && swingExecutionAligned
+    && rsiOkay(swingDirection) && fundingOkay(swingDirection) && swingScore >= 75;
+  const swing = buildScenario({
+    style: "SWING",
+    direction: swingDirection,
+    candles: candles4h,
+    last,
+    fvg: swingFvg,
+    score: swingScore,
+    actionable: swingActionable,
+    trigger: swingDirection === "WAIT"
+      ? "1주봉과 4시간봉 방향이 일치할 때 스윙 셋업 재평가"
+      : `1시간봉 ${directionLabel(swingDirection)} 유지 후 15분봉 ${swingDirection === "LONG" ? "상향" : "하향"} 구조 전환 확인`,
+  });
+
+  const weeklyOpposesFourHour = weekly.direction !== "WAIT" && fourHour.direction !== "WAIT" && weekly.direction !== fourHour.direction;
+  const shortDirection = !weeklyOpposesFourHour && fourHour.direction !== "WAIT" && fourHour.direction === oneHour.direction ? fourHour.direction : "WAIT";
+  const shortExecutionAligned = shortDirection !== "WAIT" && fifteenMinute.direction === shortDirection;
+  const shortFvg = shortDirection === "WAIT" ? null : findFvg(candles15, shortDirection, last);
+  const shortScore = (fourHour.direction !== "WAIT" ? 20 : 0)
+    + (shortDirection !== "WAIT" ? 30 : 0)
+    + (shortExecutionAligned ? 25 : 0)
+    + (weekly.direction === shortDirection ? 10 : weekly.direction === "WAIT" ? 5 : 0)
+    + (shortFvg ? 5 : 0)
+    + (rsiOkay(shortDirection) ? 5 : 0)
+    + (fundingOkay(shortDirection) ? 5 : 0);
+  const shortActionable = shortDirection !== "WAIT" && shortExecutionAligned
+    && rsiOkay(shortDirection) && fundingOkay(shortDirection) && shortScore >= 75;
+  const shortTerm = buildScenario({
+    style: "SHORT_TERM",
+    direction: shortDirection,
+    candles: candles15,
+    last,
+    fvg: shortFvg,
+    score: shortScore,
+    actionable: shortActionable,
+    trigger: shortDirection === "WAIT"
+      ? weeklyOpposesFourHour ? "1주봉과 4시간봉 충돌 해소 대기" : "4시간봉과 1시간봉 방향이 일치할 때 재평가"
+      : `15분봉 ${shortDirection === "LONG" ? "상향" : "하향"} 구조 전환과 진입 구간 반응 확인`,
+  });
+
+  const actionableScenarios = [swing, shortTerm].filter((scenario) => scenario.actionable).sort((a, b) => b.score - a.score);
+  const candidateScenarios = [swing, shortTerm].filter((scenario) => scenario.candidateDirection !== "WAIT").sort((a, b) => b.score - a.score);
+  const primary = actionableScenarios[0] || candidateScenarios[0] || null;
+  const sweep = findSweep(candles15);
   const reasons = [];
-  if (hourlyDirection === "WAIT") reasons.push("1시간봉 방향성 혼조");
-  else reasons.push(`1시간봉 ${hourlyDirection === "LONG" ? "상승" : "하락"} 바이어스`);
-  if (executionDirection !== hourlyDirection) reasons.push("15분봉과 상위 추세 불일치");
-  else if (direction !== "WAIT") reasons.push("15분봉 EMA 방향 일치");
-  if (fvg) reasons.push(`${direction === "LONG" ? "강세" : "약세"} FVG 재시험 후보`);
+  reasons.push(`1주봉 ${directionLabel(weekly.direction)} · 4시간봉 ${directionLabel(fourHour.direction)}`);
+  reasons.push(`1시간봉 ${directionLabel(oneHour.direction)} · 15분봉 ${directionLabel(fifteenMinute.direction)}`);
+  if (swingDirection !== "WAIT") reasons.push(`스윙 ${directionLabel(swingDirection)} 셋업 ${swingActionable ? "확인" : "대기"}`);
+  if (shortDirection !== "WAIT") reasons.push(`단기 ${directionLabel(shortDirection)} 셋업 ${shortActionable ? "확인" : "대기"}`);
+  if (weeklyOpposesFourHour) reasons.push("1주봉·4시간봉 충돌로 단기 진입 차단");
   if (sweep) reasons.push(`${sweep.direction === "LONG" ? "저점" : "고점"} 유동성 스윕 감지`);
-  if (!rsiOkay && direction !== "WAIT") reasons.push(`RSI ${round(currentRsi, 1)} 과열 필터`);
-  if (!fundingOkay && direction !== "WAIT") reasons.push("펀딩 과열 필터");
-  const score = Math.max(0, Math.min(100,
-    35 + (hourlyDirection !== "WAIT" ? 20 : 0) + (direction !== "WAIT" ? 20 : 0) + (fvg ? 10 : 0) + (rsiOkay ? 8 : 0) + (fundingOkay ? 7 : 0)
-  ));
+  if (primary && !rsiOkay(primary.candidateDirection)) reasons.push(`RSI ${round(currentRsi, 1)} 과열 필터`);
+  if (primary && !fundingOkay(primary.candidateDirection)) reasons.push("펀딩 과열 필터");
 
   return {
     market: "coin",
@@ -157,17 +246,25 @@ function analyzeCoin(symbol, candles15, candles1h, ticker) {
     volume24h: round(ticker?.volume_24h_quote || ticker?.volume_24h_usd, 0),
     fundingRate: round(funding, 4),
     rsi: round(currentRsi, 1),
-    bias: hourlyDirection,
-    verdict: actionable ? direction : "WAIT",
-    candidateDirection: direction,
-    score,
-    entry: direction === "WAIT" ? null : round(entry, 6),
-    stop: stop == null ? null : round(stop, 6),
-    target1: target1 == null ? null : round(target1, 6),
-    target2: target2 == null ? null : round(target2, 6),
-    rr: round(rr, 2),
-    zone: fvg ? { low: round(fvg.low, 6), high: round(fvg.high, 6), type: "FVG" } : null,
-    trigger: direction === "WAIT" ? "상·하위 시간대 방향이 일치할 때 재평가" : `진입 구간 도달 후 5분봉 ${direction === "LONG" ? "상향" : "하향"} 구조 전환 확인`,
+    bias: weekly.direction,
+    verdict: actionableScenarios[0]?.candidateDirection || "WAIT",
+    candidateDirection: primary?.candidateDirection || "WAIT",
+    positionType: actionableScenarios.length > 1 ? "BOTH" : actionableScenarios[0]?.style || "WAIT",
+    score: primary?.score || 0,
+    entry: primary?.entry || null,
+    stop: primary?.stop || null,
+    target1: primary?.target1 || null,
+    target2: primary?.target2 || null,
+    rr: primary?.rr || 0,
+    zone: primary?.zone || null,
+    trigger: primary?.trigger || "상위 시간대부터 방향이 정렬될 때 재평가",
+    timeframes: {
+      week: weekly.direction,
+      fourHour: fourHour.direction,
+      oneHour: oneHour.direction,
+      fifteenMinute: fifteenMinute.direction,
+    },
+    scenarios: { swing, shortTerm },
     reasons,
     candleClosedAt: new Date(candles15.at(-1).t * 1000).toISOString(),
   };
@@ -178,14 +275,18 @@ async function loadCoinRecommendations() {
   const tickerMap = new Map((Array.isArray(tickers) ? tickers : []).map((ticker) => [ticker.contract, ticker]));
   const candidates = await Promise.all(coinUniverse.map(async (symbol) => {
     try {
-      const [raw15, raw1h] = await Promise.all([
+      const [raw15, raw1h, raw4h, raw1w] = await Promise.all([
         gatePublic("/futures/usdt/candlesticks", { contract: symbol, interval: "15m", limit: "240" }),
         gatePublic("/futures/usdt/candlesticks", { contract: symbol, interval: "1h", limit: "200" }),
+        gatePublic("/futures/usdt/candlesticks", { contract: symbol, interval: "4h", limit: "240" }),
+        gatePublic("/futures/usdt/candlesticks", { contract: symbol, interval: "1w", limit: "120" }),
       ]);
-      const candles15 = normalizeGateCandles(raw15);
-      const candles1h = normalizeGateCandles(raw1h);
-      if (candles15.length < 60 || candles1h.length < 60) throw new Error("캔들 데이터 부족");
-      return analyzeCoin(symbol, candles15, candles1h, tickerMap.get(symbol));
+      const candles15 = completedCandles(normalizeGateCandles(raw15), 15 * 60);
+      const candles1h = completedCandles(normalizeGateCandles(raw1h), 60 * 60);
+      const candles4h = completedCandles(normalizeGateCandles(raw4h), 4 * 60 * 60);
+      const candles1w = completedCandles(normalizeGateCandles(raw1w), 7 * 24 * 60 * 60);
+      if (candles15.length < 60 || candles1h.length < 60 || candles4h.length < 60 || candles1w.length < 22) throw new Error("다중 시간대 캔들 데이터 부족");
+      return analyzeCoin(symbol, candles15, candles1h, candles4h, candles1w, tickerMap.get(symbol));
     } catch (error) {
       return { market: "coin", symbol: symbol.replace("_", "/"), contract: symbol, error: error.message || "조회 실패" };
     }

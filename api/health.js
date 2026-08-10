@@ -6,7 +6,7 @@ export default function handler(req, res) {
     ok: true,
     service: "tooja",
     gateConfigured: hasGateCredentials(),
-    accessProtected: Boolean(process.env.DASHBOARD_ACCESS_TOKEN),
+    accessProtected: false,
     timestamp: new Date().toISOString(),
   });
 }

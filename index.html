@@ -76,12 +76,12 @@
 
     <div class="content app-view recommendation-view" id="view-coin" data-app-view="coin" hidden>
       <section class="hero recommendation-hero">
-        <div><p class="eyebrow">LIVE MARKET SCANNER</p><h1>코인 종목 추천</h1><p>Gate.io 무기한 선물의 실제 1시간·15분 캔들과 펀딩 데이터를 조합해 조건부 시나리오를 계산합니다.</p></div>
+        <div><p class="eyebrow">LIVE MARKET SCANNER</p><h1>코인 종목 추천</h1><p>Gate.io 무기한 선물의 실제 1주·4시간·1시간·15분 캔들을 순서대로 분석해 스윙과 단기 포지션을 구분합니다.</p></div>
         <div class="scan-status"><span class="live-dot"></span><div><small>데이터 소스</small><strong>Gate.io API v4</strong></div></div>
       </section>
       <section class="method-panel panel">
-        <div><strong>판정 순서</strong><span>1H 바이어스 → 15m 구조·모멘텀 → 변동성 기반 진입/손절/익절 → R:R·펀딩 필터</span></div>
-        <p>추천은 즉시 주문 신호가 아니라 조건이 충족될 때 검토할 후보입니다. `관망`도 정상 판정입니다.</p>
+        <div><strong>판정 순서</strong><span>1W 큰 방향 → 4H 스윙 구조 → 1H 단기 추세 → 15m 진입 타이밍 → R:R·RSI·펀딩 필터</span></div>
+        <p>스윙은 1주·4시간 정렬, 단기는 4시간·1시간 정렬을 우선합니다. 15분 확인 전에는 셋업 대기로 표시합니다.</p>
       </section>
       <section class="recommendation-toolbar">
         <div><h2>오늘의 코인 후보</h2><p id="coinScanMeta">실시간 데이터를 불러오는 중입니다.</p></div>
