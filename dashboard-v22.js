@@ -175,10 +175,29 @@ function render() {
   renderPositions(); renderTrades(); renderHistory();
 }
 
+async function fetchDashboard() {
+  let token = sessionStorage.getItem("toojaDashboardToken") || "";
+  const request = () => fetch("/api/dashboard", {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  let response = await request();
+  if (response.status === 401) {
+    const entered = window.prompt("대시보드 접근 토큰을 입력하세요.");
+    if (entered) {
+      token = entered.trim();
+      sessionStorage.setItem("toojaDashboardToken", token);
+      response = await request();
+    }
+  }
+  return response;
+}
+
 async function loadDashboard(showToast = false) {
   $("refreshButton").disabled = true;
   try {
-    const response = await fetch("/api/dashboard", {cache:"no-store"});
+    const response = await fetchDashboard();
     if (!response.ok) throw new Error((await response.json()).error);
     dashboard = await response.json();
     dashboard.account.total = getEffectiveTotal(dashboard.account);
