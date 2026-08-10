@@ -11,10 +11,15 @@
   <main>
     <header class="topbar">
       <div><span class="live-dot"></span><span>시장 운영 중</span><time id="clock"></time></div>
-      <div class="top-actions"><span id="modeBadge" class="badge">SAMPLE DATA</span><button id="refreshButton">↻ <span>새로고침</span></button></div>
+      <nav class="app-tabs" aria-label="주요 메뉴">
+        <a href="#positions" data-view="dashboard">포지션</a>
+        <a href="#coin-recommendations" data-view="coin">코인 추천</a>
+        <a href="#stock-recommendations" data-view="stock">주식 추천</a>
+      </nav>
+      <div class="top-actions"><span id="modeBadge" class="badge">연결 확인 중</span><button id="refreshButton">↻ <span>새로고침</span></button></div>
     </header>
 
-    <div class="content">
+    <div class="content app-view" id="view-dashboard" data-app-view="dashboard">
       <section class="market-panel" aria-labelledby="marketTitle">
         <div class="market-title"><i></i><h2 id="marketTitle">시장 지표</h2><small id="marketUpdated">불러오는 중</small></div>
         <div id="marketGrid" class="market-grid" aria-live="polite"></div>
@@ -67,6 +72,39 @@
         </section>
 
       </div>
+    </div>
+
+    <div class="content app-view recommendation-view" id="view-coin" data-app-view="coin" hidden>
+      <section class="hero recommendation-hero">
+        <div><p class="eyebrow">LIVE MARKET SCANNER</p><h1>코인 종목 추천</h1><p>Gate.io 무기한 선물의 실제 1시간·15분 캔들과 펀딩 데이터를 조합해 조건부 시나리오를 계산합니다.</p></div>
+        <div class="scan-status"><span class="live-dot"></span><div><small>데이터 소스</small><strong>Gate.io API v4</strong></div></div>
+      </section>
+      <section class="method-panel panel">
+        <div><strong>판정 순서</strong><span>1H 바이어스 → 15m 구조·모멘텀 → 변동성 기반 진입/손절/익절 → R:R·펀딩 필터</span></div>
+        <p>추천은 즉시 주문 신호가 아니라 조건이 충족될 때 검토할 후보입니다. `관망`도 정상 판정입니다.</p>
+      </section>
+      <section class="recommendation-toolbar">
+        <div><h2>오늘의 코인 후보</h2><p id="coinScanMeta">실시간 데이터를 불러오는 중입니다.</p></div>
+        <div class="filter-pills recommendation-filters" aria-label="코인 추천 필터">
+          <button class="active" data-coin-filter="all">전체</button><button data-coin-filter="actionable">진입 후보</button><button data-coin-filter="wait">관망</button>
+        </div>
+      </section>
+      <div id="coinRecommendationGrid" class="recommendation-grid" aria-live="polite"></div>
+      <section class="panel data-note"><strong>데이터 기준</strong><p>가격·캔들·24시간 거래량·펀딩은 Gate.io 공개 API에서 조회합니다. 서버 계산 시각과 사용한 봉 마감 시각을 함께 표시하며, API 실패 시 임의 추천값으로 대체하지 않습니다.</p></section>
+    </div>
+
+    <div class="content app-view recommendation-view" id="view-stock" data-app-view="stock" hidden>
+      <section class="hero recommendation-hero">
+        <div><p class="eyebrow">MARKET WATCHLIST</p><h1>주식 종목 추천</h1><p>미국 주요 종목의 실제 가격 흐름을 바탕으로 기술 후보를 선별합니다. 어닝·매크로 이벤트 연결 전에는 이벤트 확정 추천을 표시하지 않습니다.</p></div>
+        <div class="scan-status stock"><span>β</span><div><small>현재 단계</small><strong>기술 스캐너</strong></div></div>
+      </section>
+      <section class="method-panel panel stock-method">
+        <div><strong>현재 반영</strong><span>일봉 추세·RSI·20일 변동성·거래량</span></div>
+        <div><strong>다음 연결</strong><span>실적 발표·CPI/FOMC·국채금리·섹터 상대강도</span></div>
+      </section>
+      <section class="recommendation-toolbar"><div><h2>미국주식 관찰 후보</h2><p id="stockScanMeta">실제 시세 데이터를 불러오는 중입니다.</p></div></section>
+      <div id="stockRecommendationGrid" class="recommendation-grid stock-grid" aria-live="polite"></div>
+      <section class="panel data-note warning"><strong>판정 제한</strong><p>현 단계의 주식 결과는 가격 기반 기술 후보입니다. 어닝과 매크로 일정이 연결되기 전까지 신규 진입 추천이 아니라 관찰 우선순위로 사용하세요.</p></section>
     </div>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>

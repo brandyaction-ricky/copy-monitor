@@ -11,6 +11,10 @@ let dashboard = emptyDashboard;
 let filter = "all";
 let visibleTradeCount = 10;
 let tradeFilter = "all";
+let coinFilter = "all";
+let recommendations = { coin: null, stock: null };
+let dashboardLoaded = false;
+let marketLoaded = false;
 const $ = (id) => document.getElementById(id);
 const getEffectiveTotal = (account = dashboard.account) => {
   const analysisTotal = Number(account?.analysisTotal || 0);
@@ -29,6 +33,17 @@ const toast = (message) => {
   $("toast").textContent = message; $("toast").classList.add("show");
   clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => $("toast").classList.remove("show"), 3000);
 };
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
+const compactUsd = (value) => {
+  const amount = Number(value || 0);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: Math.abs(amount) >= 1_000_000 ? "compact" : "standard", maximumFractionDigits: Math.abs(amount) >= 1_000 ? 1 : 2 }).format(amount);
+};
+const priceText = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "—";
+  const digits = amount >= 1000 ? 2 : amount >= 1 ? 4 : 6;
+  return `$${new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(amount)}`;
+};
 
 async function loadMarketIndicators() {
   const grid = $("marketGrid");
@@ -46,12 +61,86 @@ async function loadMarketIndicators() {
       return `<article class="market-card"><span><i class="market-dot ${tone}"></i>${item.name}</span><strong>${price}</strong><em class="${tone}">${available ? `${change>=0?"+":""}${change.toFixed(2)}%` : "조회 불가"}</em></article>`;
     }).join("");
     renderSentiments(data.sentiments || []);
+    marketLoaded = true;
     $("marketUpdated").textContent = `${new Date(data.updatedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"})} KST`;
   } catch {
     grid.innerHTML = names.map((name) => `<article class="market-card"><span><i class="market-dot muted"></i>${name}</span><strong>—</strong><em class="muted">조회 불가</em></article>`).join("");
     $("marketUpdated").textContent = "연결 확인 필요";
     renderSentiments([]);
   }
+}
+
+function recommendationSkeleton(target, count = 4) {
+  $(target).innerHTML = Array.from({ length: count }, () => `<article class="recommendation-card loading-card"><div></div><div></div><div></div></article>`).join("");
+}
+
+function renderCoinRecommendations() {
+  const payload = recommendations.coin;
+  if (!payload) return;
+  const items = (payload.candidates || []).filter((item) => coinFilter === "all" || (coinFilter === "actionable" ? ["LONG", "SHORT"].includes(item.verdict) : item.verdict === "WAIT"));
+  $("coinScanMeta").textContent = `${new Date(payload.updatedAt).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST · ${payload.source} · 15분봉/1시간봉`;
+  $("coinRecommendationGrid").innerHTML = items.length ? items.map((item) => {
+    if (item.error) return `<article class="recommendation-card error-card"><div class="recommendation-head"><div><small>${escapeHtml(item.symbol)}</small><h3>데이터 조회 실패</h3></div><span class="verdict wait">확인 필요</span></div><p>${escapeHtml(item.error)}</p></article>`;
+    const verdict = item.verdict === "LONG" ? "LONG 후보" : item.verdict === "SHORT" ? "SHORT 후보" : "관망";
+    const tone = item.verdict === "LONG" ? "long" : item.verdict === "SHORT" ? "short" : "wait";
+    const bias = item.bias === "LONG" ? "상승" : item.bias === "SHORT" ? "하락" : "혼조";
+    return `<article class="recommendation-card ${tone}">
+      <div class="recommendation-head"><div><small>${escapeHtml(item.contract)} · 24H ${item.change24h >= 0 ? "+" : ""}${number(item.change24h)}%</small><h3>${escapeHtml(item.symbol)}</h3></div><span class="verdict ${tone}">${verdict}</span></div>
+      <div class="recommendation-price"><strong>${priceText(item.price)}</strong><span>적합도 <b>${number(item.score, 0)}</b>/100</span></div>
+      <div class="signal-strip"><span>1H ${bias}</span><span>RSI ${number(item.rsi, 1)}</span><span>펀딩 ${item.fundingRate >= 0 ? "+" : ""}${number(item.fundingRate, 4)}%</span><span>거래량 ${compactUsd(item.volume24h)}</span></div>
+      ${item.candidateDirection !== "WAIT" ? `<div class="scenario-levels"><div><small>진입 구간</small><strong>${item.zone ? `${priceText(item.zone.low)}–${priceText(item.zone.high)}` : priceText(item.entry)}</strong></div><div><small>손절</small><strong>${priceText(item.stop)}</strong></div><div><small>1차 익절</small><strong>${priceText(item.target1)}</strong></div><div><small>R:R</small><strong>${number(item.rr, 2)}</strong></div></div>` : ""}
+      <ul class="reason-list">${(item.reasons || []).slice(0, 4).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
+      <div class="trigger-box"><small>실행 조건</small><p>${escapeHtml(item.trigger)}</p></div>
+      <p class="candle-time">최근 사용 봉: ${new Date(item.candleClosedAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST</p>
+    </article>`;
+  }).join("") : `<article class="panel empty-recommendations">현재 필터에 해당하는 후보가 없습니다.</article>`;
+}
+
+function renderStockRecommendations() {
+  const payload = recommendations.stock;
+  if (!payload) return;
+  $("stockScanMeta").textContent = `${new Date(payload.updatedAt).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST · 가격 기반 기술 스캔`;
+  $("stockRecommendationGrid").innerHTML = (payload.candidates || []).map((item) => {
+    if (item.error) return `<article class="recommendation-card error-card"><div class="recommendation-head"><div><small>${escapeHtml(item.sector)}</small><h3>${escapeHtml(item.symbol)}</h3></div><span class="verdict wait">조회 실패</span></div><p>${escapeHtml(item.error)}</p></article>`;
+    const label = item.verdict === "WATCH" ? "관찰 우선" : item.verdict === "AVOID" ? "회피" : "중립";
+    const tone = item.verdict === "WATCH" ? "long" : item.verdict === "AVOID" ? "short" : "wait";
+    return `<article class="recommendation-card ${tone}">
+      <div class="recommendation-head"><div><small>${escapeHtml(item.name)} · ${escapeHtml(item.sector)}</small><h3>${escapeHtml(item.symbol)}</h3></div><span class="verdict ${tone}">${label}</span></div>
+      <div class="recommendation-price"><strong>${priceText(item.price)}</strong><span class="${item.change >= 0 ? "positive" : "negative"}">${item.change >= 0 ? "+" : ""}${number(item.change)}%</span></div>
+      <div class="signal-strip"><span>점수 ${number(item.score, 0)}</span><span>RSI ${number(item.rsi, 1)}</span><span>거래량 ${number(item.volumeRatio, 2)}×</span><span>변동폭 ${number(item.volatility, 2)}%</span></div>
+      <ul class="reason-list">${(item.reasons || []).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
+      <div class="trigger-box warning"><small>이벤트 필터</small><p>${escapeHtml(item.eventStatus)}</p></div>
+    </article>`;
+  }).join("");
+}
+
+async function loadRecommendations(market, showToast = false) {
+  const target = market === "coin" ? "coinRecommendationGrid" : "stockRecommendationGrid";
+  recommendationSkeleton(target);
+  try {
+    const response = await fetch(`/api/recommendations?market=${market}`, { cache: "no-store" });
+    if (!response.ok) throw new Error((await response.json()).error || "추천 데이터 조회 실패");
+    recommendations[market] = await response.json();
+    if (market === "coin") renderCoinRecommendations();
+    else renderStockRecommendations();
+    if (showToast) toast(`${market === "coin" ? "코인" : "주식"} 스캔을 갱신했습니다.`);
+  } catch (error) {
+    $(target).innerHTML = `<article class="panel recommendation-error"><strong>실시간 데이터를 불러오지 못했습니다.</strong><p>${escapeHtml(error.message)}</p><button class="retry-button" data-retry-market="${market}">다시 시도</button></article>`;
+  }
+}
+
+function resolveView() {
+  const hash = window.location.hash;
+  const view = hash === "#coin-recommendations" ? "coin" : hash === "#stock-recommendations" ? "stock" : "dashboard";
+  document.querySelectorAll("[data-app-view]").forEach((element) => { element.hidden = element.dataset.appView !== view; });
+  document.querySelectorAll("[data-view]").forEach((element) => element.classList.toggle("active", element.dataset.view === view));
+  if (view === "coin") $("modeBadge").textContent = "LIVE MARKET";
+  else if (view === "stock") $("modeBadge").textContent = "STOCK BETA";
+  else $("modeBadge").textContent = dashboardLoaded ? "LIVE" : "연결 확인 중";
+  if (view === "coin" && !recommendations.coin) loadRecommendations("coin");
+  if (view === "stock" && !recommendations.stock) loadRecommendations("stock");
+  if (view === "dashboard" && (!dashboardLoaded || !marketLoaded)) Promise.all([loadDashboard(), loadMarketIndicators()]);
+  if (hash === "#positions") requestAnimationFrame(() => $("positions")?.scrollIntoView({ block: "start" }));
 }
 
 function renderSentiments(items) {
@@ -200,6 +289,7 @@ async function loadDashboard(showToast = false) {
     const response = await fetchDashboard();
     if (!response.ok) throw new Error((await response.json()).error);
     dashboard = await response.json();
+    dashboardLoaded = true;
     dashboard.account.total = getEffectiveTotal(dashboard.account);
     $("modeBadge").textContent = "LIVE";
     if (showToast) toast("Gate.io 데이터를 새로 불러왔습니다.");
@@ -222,7 +312,12 @@ document.querySelectorAll("[data-filter]").forEach((button) => button.addEventLi
   document.querySelectorAll("[data-filter]").forEach(b=>b.classList.remove("active"));
   button.classList.add("active"); filter = button.dataset.filter; renderPositions();
 }));
-$("refreshButton").addEventListener("click",()=>loadDashboard(true));
+$("refreshButton").addEventListener("click",()=>{
+  const hash = window.location.hash;
+  if (hash === "#coin-recommendations") loadRecommendations("coin", true);
+  else if (hash === "#stock-recommendations") loadRecommendations("stock", true);
+  else Promise.all([loadDashboard(true), loadMarketIndicators()]);
+});
 $("loadMoreTrades").addEventListener("click",()=>{
   visibleTradeCount=Math.min(100,visibleTradeCount+10);
   renderTrades();
@@ -234,7 +329,23 @@ document.querySelectorAll("[data-trade-filter]").forEach((button)=>button.addEve
   visibleTradeCount=10;
   renderTrades();
 }));
+document.querySelectorAll("[data-coin-filter]").forEach((button)=>button.addEventListener("click",()=>{
+  document.querySelectorAll("[data-coin-filter]").forEach((item)=>item.classList.remove("active"));
+  button.classList.add("active");
+  coinFilter=button.dataset.coinFilter;
+  renderCoinRecommendations();
+}));
+document.addEventListener("click", (event) => {
+  const retry = event.target.closest("[data-retry-market]");
+  if (retry) loadRecommendations(retry.dataset.retryMarket, true);
+});
+window.addEventListener("hashchange", resolveView);
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("ko-KR",{hour12:false,timeZone:"Asia/Seoul"})+" KST"; },1000);
-await Promise.all([checkHealth(), loadDashboard(), loadMarketIndicators()]);
-setInterval(()=>loadDashboard(false),30_000);
-setInterval(()=>loadMarketIndicators(),60_000);
+await checkHealth();
+resolveView();
+setInterval(()=>{
+  if (!["#coin-recommendations", "#stock-recommendations"].includes(window.location.hash)) loadDashboard(false);
+},30_000);
+setInterval(()=>{
+  if (!["#coin-recommendations", "#stock-recommendations"].includes(window.location.hash)) loadMarketIndicators();
+},60_000);
