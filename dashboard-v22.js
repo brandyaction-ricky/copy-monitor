@@ -1,6 +1,7 @@
 const emptyDashboard = {
   mode: "unconfigured",
   account: { total: 0, available: 0, positionMargin: 0, unrealizedPnl: 0, totalPnl: 0, todayRealizedPnl: 0 },
+  performance: { startBalance: 0, endBalance: 0, netRealizedPnl: 0, returnRate: 0 },
   positions: [],
   trades: [],
   closeRecords: [],
@@ -14,14 +15,12 @@ let tradeFilter = "all";
 let coinFilter = "all";
 let recommendations = { coin: null, stock: null };
 let dashboardLoaded = false;
-let marketLoaded = false;
 const $ = (id) => document.getElementById(id);
 const getEffectiveTotal = (account = dashboard.account) => {
-  const analysisTotal = Number(account?.analysisTotal || 0);
   const reported = Number(account?.total || 0);
   const available = Number(account?.available || 0);
   const positionMargin = Number(account?.positionMargin || 0);
-  return analysisTotal || (reported > 0 ? reported : available + positionMargin);
+  return reported || available + positionMargin;
 };
 const usd = (value, signed = false) => {
   const n = Number(value || 0);
@@ -44,31 +43,6 @@ const priceText = (value) => {
   const digits = amount >= 1000 ? 2 : amount >= 1 ? 4 : 6;
   return `$${new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(amount)}`;
 };
-
-async function loadMarketIndicators() {
-  const grid = $("marketGrid");
-  const names = ["나스닥","코스피","비트코인","환율 (달러/원)","WTI 원유","EWY","SK하이닉스"];
-  grid.innerHTML = names.map((name) => `<article class="market-card loading"><span>${name}</span><strong>—</strong><em>조회 중</em></article>`).join("");
-  try {
-    const response = await fetch("/api/market", { cache: "no-store" });
-    if (!response.ok) throw new Error("시장 지표 조회 실패");
-    const data = await response.json();
-    grid.innerHTML = data.indicators.map((item) => {
-      const available = Number.isFinite(item.price);
-      const change = Number(item.changePercent || 0);
-      const tone = !available ? "muted" : change >= 0 ? "positive" : "negative";
-      const price = available ? new Intl.NumberFormat("en-US", { minimumFractionDigits:item.digits, maximumFractionDigits:item.digits }).format(item.price) : "—";
-      return `<article class="market-card"><span><i class="market-dot ${tone}"></i>${item.name}</span><strong>${price}</strong><em class="${tone}">${available ? `${change>=0?"+":""}${change.toFixed(2)}%` : "조회 불가"}</em></article>`;
-    }).join("");
-    renderSentiments(data.sentiments || []);
-    marketLoaded = true;
-    $("marketUpdated").textContent = `${new Date(data.updatedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"})} KST`;
-  } catch {
-    grid.innerHTML = names.map((name) => `<article class="market-card"><span><i class="market-dot muted"></i>${name}</span><strong>—</strong><em class="muted">조회 불가</em></article>`).join("");
-    $("marketUpdated").textContent = "연결 확인 필요";
-    renderSentiments([]);
-  }
-}
 
 function recommendationSkeleton(target, count = 4) {
   $(target).innerHTML = Array.from({ length: count }, () => `<article class="recommendation-card loading-card"><div></div><div></div><div></div></article>`).join("");
@@ -112,20 +86,68 @@ function renderCoinRecommendations() {
   }).join("") : `<article class="panel empty-recommendations">현재 필터에 해당하는 후보가 없습니다.</article>`;
 }
 
+const kstDateTime = (value, includeTime = true) => {
+  if (!value) return "미확인";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "미확인";
+  return date.toLocaleString("ko-KR", {
+    month: "2-digit", day: "2-digit",
+    ...(includeTime ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}),
+    timeZone: "Asia/Seoul",
+  });
+};
+const optionalNumber = (value, digits = 1, suffix = "") => value == null ? "—" : `${number(value, digits)}${suffix}`;
+const earningsMetric = (actual, estimated, suffix = "") => {
+  if (actual == null && estimated == null) return "미확인";
+  const actualText = actual == null ? "—" : `${number(actual, 2)}${suffix}`;
+  const estimateText = estimated == null ? "—" : `${number(estimated, 2)}${suffix}`;
+  return `${actualText} / 예상 ${estimateText}`;
+};
+
+function renderMacroContext(context = {}) {
+  const indicators = context.indicators || {};
+  const treasury = context.treasury || {};
+  const next = context.nextHighImpact;
+  const consensusReady = context.providers?.consensus === "live";
+  $("stockDataStatus").textContent = consensusReady ? "실적·매크로 LIVE" : "공식 매크로 LIVE";
+  $("macroContext").innerHTML = `<div class="macro-context-head">
+    <div><small>다음 중요 이벤트</small><strong>${next ? escapeHtml(next.name) : "예정 이벤트 없음"}</strong><span>${next ? `${kstDateTime(next.date)} KST${next.estimate == null ? "" : ` · 예상 ${number(next.estimate, 2)}${escapeHtml(next.unit || "")}`}` : "향후 일정을 확인했습니다."}</span></div>
+    <b class="data-state ${consensusReady ? "live" : "partial"}">${consensusReady ? "공식값 + 컨센서스" : "공식값 연결 · 컨센서스 대기"}</b>
+  </div>
+  <div class="macro-metrics">
+    <article><small>CPI 전년비</small><strong>${optionalNumber(indicators.cpiYoY, 2, "%")}</strong><span>${escapeHtml(indicators.cpiReference || "BLS")}</span></article>
+    <article><small>실업률</small><strong>${optionalNumber(indicators.unemploymentRate, 1, "%")}</strong><span>${escapeHtml(indicators.unemploymentReference || "BLS")}</span></article>
+    <article><small>비농업 고용</small><strong>${indicators.payrollChange == null ? "—" : `${indicators.payrollChange >= 0 ? "+" : ""}${number(indicators.payrollChange, 0)}K`}</strong><span>${escapeHtml(indicators.payrollReference || "BLS")}</span></article>
+    <article><small>미 국채 2년</small><strong>${optionalNumber(treasury.twoYear, 2, "%")}</strong><span>${treasury.twoYearDailyChange == null ? "일간 —" : `일간 ${treasury.twoYearDailyChange >= 0 ? "+" : ""}${number(treasury.twoYearDailyChange * 100, 0)}bp`}</span></article>
+    <article><small>미 국채 10년</small><strong>${optionalNumber(treasury.tenYear, 2, "%")}</strong><span>${treasury.tenYearDailyChange == null ? "일간 —" : `일간 ${treasury.tenYearDailyChange >= 0 ? "+" : ""}${number(treasury.tenYearDailyChange * 100, 0)}bp`}</span></article>
+    <article><small>10Y−2Y</small><strong>${optionalNumber(treasury.curve10y2y, 2, "%p")}</strong><span>${treasury.date ? kstDateTime(treasury.date, false) : "Treasury"}</span></article>
+  </div>
+  <div class="macro-source-line"><span>공식 출처: BLS · U.S. Treasury · Federal Reserve</span><span>갱신 ${kstDateTime(context.updatedAt)} KST</span></div>`;
+}
+
 function renderStockRecommendations() {
   const payload = recommendations.stock;
   if (!payload) return;
-  $("stockScanMeta").textContent = `${new Date(payload.updatedAt).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST · 가격 기반 기술 스캔`;
+  renderMacroContext(payload.context || {});
+  const consensusReady = payload.context?.providers?.consensus === "live";
+  $("stockScanMeta").textContent = `${new Date(payload.updatedAt).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST · 실가격 + 공식 매크로${consensusReady ? " + 실적 컨센서스" : ""}`;
   $("stockRecommendationGrid").innerHTML = (payload.candidates || []).map((item) => {
     if (item.error) return `<article class="recommendation-card error-card"><div class="recommendation-head"><div><small>${escapeHtml(item.sector)}</small><h3>${escapeHtml(item.symbol)}</h3></div><span class="verdict wait">조회 실패</span></div><p>${escapeHtml(item.error)}</p></article>`;
-    const label = item.verdict === "WATCH" ? "관찰 우선" : item.verdict === "AVOID" ? "회피" : "중립";
+    const label = item.verdict === "WATCH" ? "진입 관찰" : item.verdict === "AVOID" ? "회피" : item.decisionBlocked ? "판단 보류" : "중립";
     const tone = item.verdict === "WATCH" ? "long" : item.verdict === "AVOID" ? "short" : "wait";
+    const nextEarnings = item.earnings?.next;
+    const latestEarnings = item.earnings?.latest;
     return `<article class="recommendation-card ${tone}">
-      <div class="recommendation-head"><div><small>${escapeHtml(item.name)} · ${escapeHtml(item.sector)}</small><h3>${escapeHtml(item.symbol)}</h3></div><span class="verdict ${tone}">${label}</span></div>
+      <div class="recommendation-head"><div><small>${escapeHtml(item.name)} · ${escapeHtml(item.sector)}</small><h3>${escapeHtml(item.symbol)}</h3></div><div class="verdict-stack"><span class="verdict ${tone}">${label}</span><small>${item.dataStatus === "FULL" ? "실적·매크로 확인" : "공식 매크로만 확인"}</small></div></div>
       <div class="recommendation-price"><strong>${priceText(item.price)}</strong><span class="${item.change >= 0 ? "positive" : "negative"}">${item.change >= 0 ? "+" : ""}${number(item.change)}%</span></div>
       <div class="signal-strip"><span>점수 ${number(item.score, 0)}</span><span>RSI ${number(item.rsi, 1)}</span><span>거래량 ${number(item.volumeRatio, 2)}×</span><span>변동폭 ${number(item.volatility, 2)}%</span></div>
+      <div class="earnings-grid">
+        <section><small>다음 실적</small><strong>${nextEarnings ? `${kstDateTime(nextEarnings.date)} KST` : item.symbol === "QQQ" ? "해당 없음" : "일정 미확인"}</strong><span>${nextEarnings ? `EPS 예상 ${nextEarnings.epsEstimated == null ? "—" : number(nextEarnings.epsEstimated, 2)} · 매출 ${nextEarnings.revenueEstimated == null ? "—" : compactUsd(nextEarnings.revenueEstimated)}` : ""}</span></section>
+        <section><small>최근 발표</small><strong>${latestEarnings ? kstDateTime(latestEarnings.date, false) : item.symbol === "QQQ" ? "해당 없음" : "발표값 미확인"}</strong><span>${latestEarnings ? `EPS ${earningsMetric(latestEarnings.epsActual, latestEarnings.epsEstimated)} · 서프라이즈 ${optionalNumber(latestEarnings.epsSurprise, 1, "%")}` : ""}</span></section>
+      </div>
       <ul class="reason-list">${(item.reasons || []).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
       <div class="trigger-box warning"><small>이벤트 필터</small><p>${escapeHtml(item.eventStatus)}</p></div>
+      <p class="candle-time">가격 기준 ${item.priceTime ? `${kstDateTime(item.priceTime)} KST` : "미확인"} · 이벤트/금리 ${kstDateTime(payload.context?.updatedAt)} KST</p>
     </article>`;
   }).join("");
 }
@@ -155,22 +177,8 @@ function resolveView() {
   else $("modeBadge").textContent = dashboardLoaded ? "LIVE" : "연결 확인 중";
   if (view === "coin" && !recommendations.coin) loadRecommendations("coin");
   if (view === "stock" && !recommendations.stock) loadRecommendations("stock");
-  if (view === "dashboard" && (!dashboardLoaded || !marketLoaded)) Promise.all([loadDashboard(), loadMarketIndicators()]);
+  if (view === "dashboard" && !dashboardLoaded) loadDashboard();
   if (hash === "#positions") requestAnimationFrame(() => $("positions")?.scrollIntoView({ block: "start" }));
-}
-
-function renderSentiments(items) {
-  const defaults = ["비트코인","나스닥","코스피"];
-  const values = defaults.map((name) => items.find((item) => item.name === name) || { name, score:null, label:"조회 불가", source:"" });
-  $("sentimentGrid").innerHTML = values.map((item) => {
-    const score = Number.isFinite(item.score) ? item.score : 50;
-    const tone = item.score == null ? "muted" : score < 45 ? "negative" : score < 56 ? "neutral" : "positive";
-    return `<article class="sentiment-card">
-      <div class="sentiment-name"><span>${item.name}</span><small>${item.source || ""}</small></div>
-      <div class="gauge"><div class="gauge-arc"><i style="transform:rotate(${score*1.8-90}deg)"></i></div></div>
-      <div class="sentiment-value ${tone}"><strong>${item.score == null ? "—" : item.score}</strong><span>${item.label}</span></div>
-    </article>`;
-  }).join("");
 }
 
 function renderPositions() {
@@ -211,13 +219,9 @@ function renderTrades() {
 
 function renderHistory() {
   const rawPoints = dashboard.history || [];
-  const currentTotal = getEffectiveTotal();
-  const historyEnd = rawPoints.length ? Number(rawPoints[rawPoints.length-1].value || 0) : 0;
-  const correction = currentTotal - historyEnd;
-  const points = rawPoints.map((point) => ({
-    ...point,
-    value: Number(point.value || 0) + correction,
-  }));
+  const performance = dashboard.performance || {};
+  const currentTotal = Number(performance.endBalance ?? getEffectiveTotal());
+  const points = rawPoints.map((point) => ({ ...point, value: Number(point.value || 0) }));
   if (!points.length) {
     $("chartStart").textContent = "기록 없음";
     $("chartEnd").textContent = usd(currentTotal);
@@ -228,8 +232,10 @@ function renderHistory() {
     return;
   }
   const values = points.map(p=>Number(p.value||0));
-  const start = values[0], end = values[values.length-1], change = end-start;
-  const rate = start ? change/start*100 : 0;
+  const start = Number(performance.startBalance ?? values[0]);
+  const end = Number(performance.endBalance ?? values[values.length-1]);
+  const change = Number(performance.netRealizedPnl ?? end-start);
+  const rate = Number(performance.returnRate ?? (start ? change/start*100 : 0));
   $("chartStart").textContent = usd(start);
   $("chartEnd").textContent = usd(end);
   $("chartChange").textContent = `${usd(change,true)} · ${rate>=0?"+":""}${number(rate)}%`;
@@ -245,15 +251,16 @@ function renderHistory() {
   $("chartArea").setAttribute("d",`${line} L900 220 L0 220 Z`);
   const labelIndexes=[0,.25,.5,.75,1].map(r=>Math.round((points.length-1)*r));
   $("chartAxis").innerHTML=labelIndexes.map(i=>`<span>${new Date(points[i].time).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})}</span>`).join("");
-  $("historyDescription").textContent="7월 1일부터 현재까지의 선물 자산 분석 데이터입니다.";
+  $("historyDescription").textContent="7월 1일부터 현재까지 입출금과 미실현손익을 제외하고, 청산손익·수수료·펀딩비를 합산한 순실현 성과입니다.";
 }
 
 function render() {
   const a = dashboard.account, positions = dashboard.positions;
   const effectiveTotal = getEffectiveTotal(a);
   a.total = effectiveTotal;
-  $("chartEnd").textContent = usd(effectiveTotal);
-  const totalPnl = Number(a.totalPnl ?? a.unrealizedPnl ?? 0);
+  const performance = dashboard.performance || {};
+  $("chartEnd").textContent = usd(performance.endBalance ?? effectiveTotal);
+  const totalPnl = Number(performance.netRealizedPnl ?? a.totalPnl ?? 0);
   $("chartTotalPnl").textContent = usd(totalPnl, true);
   $("chartTotalPnl").className = totalPnl >= 0 ? "positive" : "negative";
   $("availableMargin").textContent = usd(a.available);
@@ -322,7 +329,7 @@ $("refreshButton").addEventListener("click",()=>{
   const hash = window.location.hash;
   if (hash === "#coin-recommendations") loadRecommendations("coin", true);
   else if (hash === "#stock-recommendations") loadRecommendations("stock", true);
-  else Promise.all([loadDashboard(true), loadMarketIndicators()]);
+  else loadDashboard(true);
 });
 $("loadMoreTrades").addEventListener("click",()=>{
   visibleTradeCount=Math.min(100,visibleTradeCount+10);
@@ -353,5 +360,4 @@ setInterval(()=>{
   if (!["#coin-recommendations", "#stock-recommendations"].includes(window.location.hash)) loadDashboard(false);
 },30_000);
 setInterval(()=>{
-  if (!["#coin-recommendations", "#stock-recommendations"].includes(window.location.hash)) loadMarketIndicators();
 },60_000);

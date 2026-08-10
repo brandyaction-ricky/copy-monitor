@@ -1,3 +1,5 @@
+import { loadMarketContext } from "../lib/market-context.js";
+
 const GATE_HOST = "https://api.gateio.ws/api/v4";
 
 const coinUniverse = ["BTC_USDT", "ETH_USDT", "SOL_USDT", "XRP_USDT", "BNB_USDT", "HYPE_USDT"];
@@ -309,7 +311,10 @@ async function loadYahooChart(symbol) {
   return { rows, meta: result.meta || {} };
 }
 
-function analyzeStock(stock, data) {
+const hoursUntil = (date, now = Date.now()) => date ? (new Date(date).getTime() - now) / (60 * 60 * 1000) : null;
+const percentText = (value) => value == null ? "미확인" : `${value >= 0 ? "+" : ""}${round(value, 1)}%`;
+
+function analyzeStock(stock, data, context) {
   const closes = data.rows.map((item) => item.c);
   const volumes = data.rows.map((item) => item.v).filter(Number.isFinite);
   const last = closes.at(-1);
@@ -322,31 +327,94 @@ function analyzeStock(stock, data) {
   const averageVolume = average(volumes.slice(-20));
   const trend = last > ema20 && ema20 > ema50 ? "UP" : last < ema20 && ema20 < ema50 ? "DOWN" : "MIXED";
   const volumeRatio = averageVolume ? latestVolume / averageVolume : 0;
-  const score = Math.max(0, Math.min(100, 45 + (trend === "UP" ? 25 : trend === "DOWN" ? -15 : 0) + (currentRsi >= 45 && currentRsi <= 68 ? 15 : 0) + (volumeRatio >= 1.1 ? 10 : 0) - (volatility > 4 ? 8 : 0)));
+  const baseScore = 45 + (trend === "UP" ? 25 : trend === "DOWN" ? -15 : 0) + (currentRsi >= 45 && currentRsi <= 68 ? 15 : 0) + (volumeRatio >= 1.1 ? 10 : 0) - (volatility > 4 ? 8 : 0);
+  const earnings = context.earningsBySymbol?.[stock.symbol] || { next: null, latest: null };
+  const latestAge = earnings.latest ? (Date.now() - new Date(earnings.latest.date).getTime()) / (24 * 60 * 60 * 1000) : null;
+  const earningsAdjustment = latestAge !== null && latestAge >= 0 && latestAge <= 14
+    ? earnings.latest.epsSurprise > 0 && earnings.latest.revenueSurprise > 0
+      ? 8
+      : earnings.latest.epsSurprise < 0 && earnings.latest.revenueSurprise < 0
+        ? -10
+        : -2
+    : 0;
+  const yieldMove = finite(context.treasury?.twoYearDailyChange, 0);
+  const rateAdjustment = yieldMove >= 0.05 ? -4 : yieldMove <= -0.05 ? 3 : 0;
+  let score = Math.max(0, Math.min(100, baseScore + earningsAdjustment + rateAdjustment));
+  const earningsHours = hoursUntil(earnings.next?.date);
+  const macroEvent = context.nextHighImpact || null;
+  const macroHours = hoursUntil(macroEvent?.date);
+  const earningsRisk = earningsHours !== null && earningsHours >= 0 && earningsHours <= 72;
+  const macroRisk = macroHours !== null && macroHours >= 0 && macroHours <= 24;
+  const consensusReady = context.providers?.consensus === "live";
+  const decisionBlocked = earningsRisk || macroRisk || !consensusReady;
+  if (earningsRisk || macroRisk) score = Math.min(score, 55);
+  else if (macroHours !== null && macroHours >= 0 && macroHours <= 72) score = Math.min(score, 65);
+  else if (!consensusReady) score = Math.min(score, 60);
+  const verdict = trend === "DOWN" ? "AVOID" : !decisionBlocked && trend === "UP" && score >= 70 ? "WATCH" : "WAIT";
   const previous = closes.at(-2);
+  const reasons = [
+    trend === "UP" ? "20일·50일 추세 상승 배열" : trend === "DOWN" ? "20일·50일 추세 하락 배열" : "이동평균 혼조",
+    `RSI ${round(currentRsi, 1)}`,
+    `거래량 ${round(volumeRatio, 2)}×`,
+    `20일 평균 변동폭 ${round(volatility, 2)}%`,
+  ];
+  if (earnings.latest && latestAge <= 14) reasons.push(`최근 실적 EPS ${percentText(earnings.latest.epsSurprise)} · 매출 ${percentText(earnings.latest.revenueSurprise)}`);
+  if (Math.abs(yieldMove) >= 0.05) reasons.push(`미 2년물 일간 ${yieldMove >= 0 ? "+" : ""}${round(yieldMove * 100, 0)}bp`);
+  const eventStatus = earningsRisk
+    ? `실적 발표 ${Math.max(0, Math.ceil(earningsHours))}시간 전 · 신규 진입 제한`
+    : macroRisk
+      ? `${macroEvent.name} ${Math.max(0, Math.ceil(macroHours))}시간 전 · 신규 진입 제한`
+      : !consensusReady
+        ? "공식 매크로는 연결됨 · 실적/컨센서스 공급자 연결 필요"
+        : macroHours !== null && macroHours >= 0 && macroHours <= 72
+          ? `${macroEvent.name} ${Math.ceil(macroHours)}시간 전 · 비중 축소 구간`
+          : "현재 24시간 내 중요 이벤트 없음";
   return {
     market: "stock", symbol: stock.symbol, name: stock.name, sector: stock.sector,
     price: round(data.meta.regularMarketPrice ?? last, 2),
     change: round(previous ? (last - previous) / previous * 100 : 0, 2),
-    trend, rsi: round(currentRsi, 1), volatility: round(volatility, 2), volumeRatio: round(volumeRatio, 2), score,
-    verdict: trend === "UP" && score >= 70 ? "WATCH" : trend === "DOWN" ? "AVOID" : "WAIT",
-    reasons: [
-      trend === "UP" ? "20일·50일 추세 상승 배열" : trend === "DOWN" ? "20일·50일 추세 하락 배열" : "이동평균 혼조",
-      `RSI ${round(currentRsi, 1)}`,
-      `거래량 ${round(volumeRatio, 2)}×`,
-      `20일 평균 변동폭 ${round(volatility, 2)}%`,
-    ],
-    eventStatus: "실적·매크로 일정 미연결",
+    trend, rsi: round(currentRsi, 1), volatility: round(volatility, 2), volumeRatio: round(volumeRatio, 2), score: round(score, 0),
+    verdict,
+    reasons,
+    eventStatus,
+    decisionBlocked,
+    dataStatus: consensusReady ? "FULL" : "OFFICIAL_ONLY",
+    earnings,
+    macroEvent,
     priceTime: data.meta.regularMarketTime ? new Date(data.meta.regularMarketTime * 1000).toISOString() : null,
   };
 }
 
 async function loadStockRecommendations() {
-  const candidates = await Promise.all(stockUniverse.map(async (stock) => {
-    try { return analyzeStock(stock, await loadYahooChart(stock.symbol)); }
-    catch (error) { return { market: "stock", ...stock, error: error.message || "조회 실패" }; }
-  }));
-  return candidates.sort((a, b) => finite(b.score, -1) - finite(a.score, -1));
+  const earningsSymbols = stockUniverse.filter((stock) => stock.symbol !== "QQQ").map((stock) => stock.symbol);
+  const [context, prices] = await Promise.all([
+    loadMarketContext(earningsSymbols),
+    Promise.all(stockUniverse.map(async (stock) => {
+      try { return { stock, data: await loadYahooChart(stock.symbol) }; }
+      catch (error) { return { stock, error }; }
+    })),
+  ]);
+  const candidates = prices.map(({ stock, data, error }) => {
+    try {
+      if (error) throw error;
+      return analyzeStock(stock, data, context);
+    } catch (failure) {
+      return { market: "stock", ...stock, error: failure.message || "조회 실패" };
+    }
+  });
+  return {
+    candidates: candidates.sort((a, b) => finite(b.score, -1) - finite(a.score, -1)),
+    context: {
+      updatedAt: context.updatedAt,
+      providers: context.providers,
+      indicators: context.indicators,
+      treasury: context.treasury,
+      nextHighImpact: context.nextHighImpact,
+      upcomingEvents: (context.events || []).filter((event) => new Date(event.date) >= new Date()).slice(0, 6),
+      errors: context.errors,
+      sources: context.sources,
+    },
+  };
 }
 
 export default async function handler(req, res) {
@@ -354,9 +422,18 @@ export default async function handler(req, res) {
   const market = String(req.query.market || "coin");
   if (!['coin', 'stock'].includes(market)) return res.status(400).json({ error: "Unsupported market" });
   try {
-    const candidates = market === "coin" ? await loadCoinRecommendations() : await loadStockRecommendations();
-    res.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
-    return res.status(200).json({ market, source: market === "coin" ? "Gate.io API v4" : "Yahoo Finance chart", updatedAt: new Date().toISOString(), candidates });
+    const result = market === "coin"
+      ? { candidates: await loadCoinRecommendations(), context: null }
+      : await loadStockRecommendations();
+    res.setHeader("Cache-Control", market === "coin" ? "public, s-maxage=60, stale-while-revalidate=120" : "public, s-maxage=300, stale-while-revalidate=600");
+    const stockSource = `Yahoo Finance · BLS · U.S. Treasury · Federal Reserve${result.context?.providers?.consensus === "live" ? " · FMP" : ""}`;
+    return res.status(200).json({
+      market,
+      source: market === "coin" ? "Gate.io API v4" : stockSource,
+      updatedAt: new Date().toISOString(),
+      candidates: result.candidates,
+      context: result.context,
+    });
   } catch (error) {
     return res.status(502).json({ error: error.message || "Recommendation data unavailable" });
   }

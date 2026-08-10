@@ -20,36 +20,25 @@
     </header>
 
     <div class="content app-view" id="view-dashboard" data-app-view="dashboard">
-      <section class="market-panel" aria-labelledby="marketTitle">
-        <div class="market-title"><i></i><h2 id="marketTitle">시장 지표</h2><small id="marketUpdated">불러오는 중</small></div>
-        <div id="marketGrid" class="market-grid" aria-live="polite"></div>
-      </section>
-
-      <section class="sentiment-panel" aria-labelledby="sentimentTitle">
-        <div class="market-title"><i></i><h2 id="sentimentTitle">공포·탐욕 지수</h2><small>0 공포 · 100 탐욕</small></div>
-        <div id="sentimentGrid" class="sentiment-grid" aria-live="polite"></div>
-        <p class="sentiment-note">나스닥·코스피는 최근 가격 모멘텀, RSI, 기간 내 가격 위치를 조합한 자체 산출 지표입니다.</p>
-      </section>
-
       <section class="hero" id="overview">
         <div><p class="eyebrow">OVERVIEW</p><h1>포지션 대시보드</h1><p>Gate.io 선물 계정의 포지션과 리스크를 한눈에 확인하세요.</p></div>
         <div class="account-pill"><span>G</span><div><small>조회 계정</small><strong>USDT 무기한 선물</strong></div></div>
       </section>
 
       <section class="panel chart-panel overview-value-panel">
-        <div class="section-head"><div><p class="eyebrow">FUTURES ASSETS ANALYSIS</p><h2>토탈 밸류 · 시드 변화</h2><p id="historyDescription">7월 1일부터 현재까지의 선물 자산 분석 데이터입니다.</p></div><span class="period-label">07.01 — TODAY</span></div>
+        <div class="section-head"><div><p class="eyebrow">FUTURES REALIZED PERFORMANCE</p><h2>선물 자산 · 실현 수익</h2><p id="historyDescription">7월 1일부터 현재까지 입출금과 미실현손익을 제외한 순실현 성과입니다.</p></div><span class="period-label">07.01 — TODAY</span></div>
         <div class="overview-value-row">
           <div class="overview-balance">
-            <small>Est. Total Value</small>
+            <small>Realized Futures Value</small>
             <strong><span id="chartEnd">—</span> <em>USD</em></strong>
-            <p>Total PNL <b id="chartTotalPnl">—</b> <small>since 07.01</small></p>
+            <p>Net Realized PNL <b id="chartTotalPnl">—</b> <small>since 07.01</small></p>
           </div>
-          <div class="chart overview-sparkline" aria-label="7월 1일부터 현재까지 토탈 밸류 변화 차트">
+          <div class="chart overview-sparkline" aria-label="7월 1일부터 현재까지 누적 순실현손익 변화 차트">
             <svg viewBox="0 0 900 220" preserveAspectRatio="none" role="img"><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#24e0ad" stop-opacity=".34"/><stop offset="1" stop-color="#24e0ad" stop-opacity="0"/></linearGradient></defs><path id="chartArea" class="area" d=""/><path id="chartLine" class="line" d=""/></svg>
             <div id="chartAxis" class="chart-axis"></div>
           </div>
         </div>
-        <div class="chart-stats compact"><div><small>7월 1일 시작 밸류</small><strong id="chartStart">—</strong></div><div><small>기간 변화</small><strong id="chartChange">—</strong></div></div>
+        <div class="chart-stats compact"><div><small>7월 1일 시작 선물자산</small><strong id="chartStart">—</strong></div><div><small>누적 순실현 성과</small><strong id="chartChange">—</strong></div></div>
       </section>
 
       <section class="summary-grid account-summary" aria-label="계좌 요약">
@@ -95,16 +84,18 @@
 
     <div class="content app-view recommendation-view" id="view-stock" data-app-view="stock" hidden>
       <section class="hero recommendation-hero">
-        <div><p class="eyebrow">MARKET WATCHLIST</p><h1>주식 종목 추천</h1><p>미국 주요 종목의 실제 가격 흐름을 바탕으로 기술 후보를 선별합니다. 어닝·매크로 이벤트 연결 전에는 이벤트 확정 추천을 표시하지 않습니다.</p></div>
-        <div class="scan-status stock"><span>β</span><div><small>현재 단계</small><strong>기술 스캐너</strong></div></div>
+        <div><p class="eyebrow">DATA-VERIFIED WATCHLIST</p><h1>주식 종목 추천</h1><p>실제 가격·실적·매크로 일정과 발표값을 함께 확인해 진입 가능 후보와 이벤트 위험 종목을 구분합니다.</p></div>
+        <div class="scan-status stock"><span>✓</span><div><small>데이터 검증</small><strong id="stockDataStatus">연결 확인 중</strong></div></div>
       </section>
       <section class="method-panel panel stock-method">
-        <div><strong>현재 반영</strong><span>일봉 추세·RSI·20일 변동성·거래량</span></div>
-        <div><strong>다음 연결</strong><span>실적 발표·CPI/FOMC·국채금리·섹터 상대강도</span></div>
+        <div><strong>기술 데이터</strong><span>일봉 추세·RSI·20일 변동성·거래량</span></div>
+        <div><strong>이벤트 데이터</strong><span>실적·EPS/매출 서프라이즈·CPI/PPI/고용/FOMC</span></div>
+        <div><strong>금리 데이터</strong><span>미 국채 2년·10년·장단기 금리차</span></div>
       </section>
+      <section id="macroContext" class="macro-context panel" aria-live="polite"><p>공식 매크로 데이터를 불러오는 중입니다.</p></section>
       <section class="recommendation-toolbar"><div><h2>미국주식 관찰 후보</h2><p id="stockScanMeta">실제 시세 데이터를 불러오는 중입니다.</p></div></section>
       <div id="stockRecommendationGrid" class="recommendation-grid stock-grid" aria-live="polite"></div>
-      <section class="panel data-note warning"><strong>판정 제한</strong><p>현 단계의 주식 결과는 가격 기반 기술 후보입니다. 어닝과 매크로 일정이 연결되기 전까지 신규 진입 추천이 아니라 관찰 우선순위로 사용하세요.</p></section>
+      <section class="panel data-note warning"><strong>추천 안전장치</strong><p>실적 72시간 전과 중요 매크로 24시간 전에는 신규 진입 추천을 차단합니다. 컨센서스 공급자가 미연결이거나 데이터가 누락되면 기술 점수가 높아도 판단 보류로 표시합니다.</p></section>
     </div>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
