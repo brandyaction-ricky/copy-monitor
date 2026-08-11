@@ -1,6 +1,11 @@
 import { gateGet, json } from "../lib/gate.js";
 
 const n = (value) => Number(value || 0);
+const numeric = (value) => {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 const PERFORMANCE_START = Math.floor(Date.parse("2026-07-01T00:00:00+09:00") / 1000);
 const PERFORMANCE_START_BALANCE = 10_000;
 const PERFORMANCE_TYPES = new Set(["pnl", "fee", "fund"]);
@@ -88,6 +93,71 @@ export function calculatePerformance(book, endAt = Date.now()) {
   };
 }
 
+export function normalizePosition(position) {
+  const size = n(position.size);
+  const value = Math.abs(n(
+    position.value
+    || position.position_value
+    || size * n(position.mark_price),
+  ));
+  const liquidationPrice = n(position.liq_price);
+  const markPrice = n(position.mark_price);
+  const unrealizedPnl = n(position.unrealised_pnl);
+  const declaredLeverage = [position.lever, position.leverage, position.cross_leverage_limit]
+    .map(n)
+    .find((value) => value > 0) || 0;
+  const declaredInitialMargin = [position.initial_margin, position.margin]
+    .map((candidate) => Math.abs(n(candidate)))
+    .find((candidate) => candidate > 0) || 0;
+  const initialMargin = declaredInitialMargin
+    || (declaredLeverage > 0 ? value / declaredLeverage : 0);
+  const leverage = declaredLeverage
+    || (initialMargin > 0 ? value / initialMargin : 0);
+
+  return {
+    symbol: position.contract,
+    side: size > 0 ? "long" : "short",
+    leverage,
+    size,
+    value,
+    initialMargin,
+    entryPrice: n(position.entry_price),
+    markPrice,
+    liquidationPrice,
+    unrealizedPnl,
+    roe: initialMargin > 0 ? unrealizedPnl / initialMargin * 100 : 0,
+    marginRate: n(position.average_maintenance_rate || position.maintenance_rate) * 100,
+    liquidationDistance: markPrice && liquidationPrice
+      ? Math.abs(markPrice - liquidationPrice) / markPrice * 100
+      : 0,
+  };
+}
+
+export function normalizeAccountMargin(account, positions = []) {
+  const marginMode = n(account.margin_mode);
+  const crossAvailable = numeric(account.cross_available);
+  const available = marginMode === 0 && crossAvailable != null
+    ? crossAvailable
+    : n(account.available);
+  const positionInitialMargin = numeric(account.position_initial_margin);
+  const classicInitialMargin = [account.cross_initial_margin, account.isolated_position_margin]
+    .map((candidate) => Math.max(0, n(candidate)))
+    .reduce((sum, candidate) => sum + candidate, 0);
+  const positionMarginSum = positions
+    .map((position) => Math.max(0, n(position.initialMargin)))
+    .reduce((sum, candidate) => sum + candidate, 0);
+  const legacyPositionMargin = Math.max(0, n(account.position_margin));
+  const positionMargin = [positionInitialMargin, classicInitialMargin, positionMarginSum, legacyPositionMargin]
+    .find((candidate) => candidate != null && candidate > 0) || 0;
+
+  return {
+    available,
+    positionMargin,
+    marginMode,
+    availableSource: marginMode === 0 && crossAvailable != null ? "cross_available" : "available",
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") return json(res, 405, { error: "Method not allowed" });
 
@@ -102,28 +172,7 @@ export default async function handler(req, res) {
 
     const positions = (rawPositions || [])
       .filter((p) => n(p.size) !== 0)
-      .map((p) => {
-        const size = n(p.size);
-        const value = Math.abs(n(p.value || p.position_value || size * n(p.mark_price)));
-        const liquidationPrice = n(p.liq_price);
-        const markPrice = n(p.mark_price);
-        return {
-          symbol: p.contract,
-          side: size > 0 ? "long" : "short",
-          leverage: n(p.leverage || p.cross_leverage_limit),
-          size,
-          value,
-          entryPrice: n(p.entry_price),
-          markPrice,
-          liquidationPrice,
-          unrealizedPnl: n(p.unrealised_pnl),
-          roe: n(p.margin) ? n(p.unrealised_pnl) / Math.abs(n(p.margin)) * 100 : 0,
-          marginRate: n(p.maintenance_rate) * 100,
-          liquidationDistance: markPrice && liquidationPrice
-            ? Math.abs(markPrice - liquidationPrice) / markPrice * 100
-            : 0,
-        };
-      });
+      .map(normalizePosition);
 
     const trades = (rawTrades || []).map((trade) => {
       const size = n(trade.size);
@@ -146,14 +195,17 @@ export default async function handler(req, res) {
 
     const unrealizedPnl = n(account.unrealised_pnl);
     const total = n(account.total);
+    const accountMargin = normalizeAccountMargin(account, positions);
     const performance = calculatePerformance(book);
     return json(res, 200, {
       mode: "live",
       updatedAt: new Date().toISOString(),
       account: {
         total,
-        available: n(account.available),
-        positionMargin: n(account.position_margin),
+        available: accountMargin.available,
+        positionMargin: accountMargin.positionMargin,
+        marginMode: accountMargin.marginMode,
+        availableSource: accountMargin.availableSource,
         unrealizedPnl,
         totalPnl: performance.netRealizedPnl,
         todayRealizedPnl,
