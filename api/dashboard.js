@@ -50,6 +50,42 @@ export function splitTradeRange(range) {
   return chunks;
 }
 
+const tradeTimeMs = (trade) => n(trade.create_time_ms) || n(trade.create_time) * 1000;
+
+export function tradeIdentity(trade) {
+  const gateTradeId = trade.trade_id ?? trade.id;
+  if (gateTradeId != null && gateTradeId !== "") return `trade:${gateTradeId}`;
+  return [
+    "fill",
+    trade.order_id ?? "",
+    trade.contract ?? "",
+    trade.create_time_ms ?? trade.create_time ?? "",
+    trade.size ?? "",
+    trade.price ?? "",
+    trade.fee ?? "",
+    trade.role ?? "",
+  ].join(":");
+}
+
+export function mergeTrades(pages) {
+  const unique = new Map();
+  pages.flat().forEach((trade) => unique.set(tradeIdentity(trade), trade));
+  return [...unique.values()].sort((a, b) => tradeTimeMs(b) - tradeTimeMs(a));
+}
+
+export function normalizeTrade(trade) {
+  const size = n(trade.size);
+  return {
+    id: String(trade.trade_id ?? trade.id ?? tradeIdentity(trade)),
+    time: tradeTimeMs(trade),
+    symbol: trade.contract,
+    side: size >= 0 ? "buy" : "sell",
+    price: n(trade.price),
+    size,
+    fee: n(trade.fee),
+  };
+}
+
 async function loadTrades(range) {
   if (!range) return gateGet("/futures/usdt/my_trades", "limit=100");
   const pages = await Promise.all(splitTradeRange(range).map(async ({ from, to }) => {
@@ -65,12 +101,7 @@ async function loadTrades(range) {
     }
     return rows;
   }));
-  const unique = new Map();
-  pages.flat().forEach((trade) => unique.set(String(trade.id), trade));
-  return [...unique.values()].sort((a, b) => {
-    const timeOf = (trade) => n(trade.create_time_ms) || n(trade.create_time) * 1000;
-    return timeOf(b) - timeOf(a);
-  });
+  return mergeTrades(pages);
 }
 
 async function loadAccountBook(from, to) {
@@ -282,18 +313,7 @@ export default async function handler(req, res) {
       .filter((p) => n(p.size) !== 0)
       .map(normalizePosition);
 
-    const trades = (rawTrades || []).map((trade) => {
-      const size = n(trade.size);
-      return {
-        id: String(trade.id),
-        time: n(trade.create_time_ms) || n(trade.create_time) * 1000,
-        symbol: trade.contract,
-        side: size >= 0 ? "buy" : "sell",
-        price: n(trade.price),
-        size,
-        fee: n(trade.fee),
-      };
-    });
+    const trades = (rawTrades || []).map(normalizeTrade);
 
     const start = kstStartOfDay();
     const book = Array.isArray(accountBook) ? accountBook : [];

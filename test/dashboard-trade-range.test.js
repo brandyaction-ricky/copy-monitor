@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseTradeRange, splitTradeRange } from "../api/dashboard.js";
+import {
+  mergeTrades,
+  normalizeTrade,
+  parseTradeRange,
+  splitTradeRange,
+  tradeIdentity,
+} from "../api/dashboard.js";
 
 const NOW = Date.parse("2026-08-11T12:00:00+09:00");
 
@@ -28,4 +34,32 @@ test("long ranges are split into Gate-compatible seven-day requests", () => {
   assert.equal(chunks[0].from, range.from);
   assert.equal(chunks.at(-1).to, range.to);
   chunks.forEach((chunk) => assert.ok(chunk.to - chunk.from < 7 * 24 * 60 * 60));
+});
+
+test("timerange trades use Gate trade_id instead of collapsing on missing id", () => {
+  const first = {
+    trade_id: "991", order_id: "501", contract: "BTC_USDT", create_time: 1786116800.1,
+    size: "2", price: "120000", fee: "-0.1",
+  };
+  const second = {
+    trade_id: "992", order_id: "502", contract: "ETH_USDT", create_time: 1786116900.2,
+    size: "-3", price: "4300", fee: "-0.02",
+  };
+  const merged = mergeTrades([[first, second], [first]]);
+
+  assert.equal(merged.length, 2);
+  assert.equal(tradeIdentity(first), "trade:991");
+  assert.equal(normalizeTrade(first).id, "991");
+  assert.equal(normalizeTrade(second).side, "sell");
+});
+
+test("legacy timerange trades without an id retain distinct fills", () => {
+  const shared = { order_id: "700", contract: "SOL_USDT", size: "5", price: "180", fee: "-0.01" };
+  const merged = mergeTrades([[
+    { ...shared, create_time: 1786116800.1 },
+    { ...shared, create_time: 1786116800.2 },
+  ]]);
+
+  assert.equal(merged.length, 2);
+  assert.notEqual(tradeIdentity(merged[0]), tradeIdentity(merged[1]));
 });
