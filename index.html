@@ -54,9 +54,14 @@
       </section>
 
       <div class="lower-grid trades-only">
-        <section class="panel" id="trades">
-          <div class="section-head"><div><h2>최근 체결</h2><p>체결 및 포지션 청산 기록을 확인하세요.</p></div><div class="filter-pills trade-filter-pills"><button class="active" data-trade-filter="all">전체</button><button data-trade-filter="closed">청산 완료</button><button data-trade-filter="partially_closed">부분 청산</button></div></div>
-          <div class="table-wrap"><table class="trades-table"><thead><tr><th>시간</th><th>종목</th><th>상태</th><th>체결가</th><th>실현손익</th></tr></thead><tbody id="tradesBody"></tbody></table></div>
+        <section class="panel trade-timeline-panel" id="trades">
+          <div class="trade-section-tabs"><a href="#positions">현재 포지션</a><span class="active">최근 체결</span></div>
+          <div class="trade-toolbar">
+            <div class="trade-date-range" aria-label="조회된 체결 기간"><span id="tradeDateStart">—</span><b>→</b><span id="tradeDateEnd">—</span></div>
+            <div class="trade-market-pill">USDT 무기한 선물 <span>▾</span></div>
+            <div class="filter-pills trade-filter-pills" aria-label="체결 방향 필터"><button class="active" data-trade-filter="all">전체</button><button data-trade-filter="buy">매수</button><button data-trade-filter="sell">매도</button></div>
+          </div>
+          <div id="tradeTimeline" class="trade-timeline" aria-live="polite"></div>
           <button id="loadMoreTrades" class="load-more" type="button">더 보기</button>
         </section>
 

@@ -200,15 +200,27 @@ function renderPositions() {
 }
 
 function renderTrades() {
-  const trades = tradeFilter === "all"
-    ? (dashboard.trades || []).slice(0,100)
-    : (dashboard.closeRecords || []).filter((record) => record.status === tradeFilter).slice(0,100);
-  $("tradesBody").innerHTML = trades.length ? trades.slice(0,visibleTradeCount).map((t) => `<tr>
-    <td data-label="시간">${new Date(t.time).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</td>
-    <td data-label="종목"><strong>${t.symbol}</strong></td>
-    <td data-label="상태">${t.status ? `<span class="close-status ${t.status}">${t.status==="closed"?"청산 완료":"부분 청산"}</span>` : `<span class="trade-side ${t.side}">${t.side==="buy"?"매수":"매도"}</span>`}</td>
-    <td data-label="체결가">${t.price ? usd(t.price) : "—"}</td>
-    <td data-label="실현손익" class="${t.realizedPnl == null ? "" : t.realizedPnl >= 0 ? "positive" : "negative"}">${t.realizedPnl == null ? "—" : usd(t.realizedPnl,true)}</td></tr>`).join("") : `<tr><td colspan="5" class="empty-row">해당 상태의 기록이 없습니다.</td></tr>`;
+  const allTrades = (dashboard.trades || []).slice(0,100);
+  const trades = tradeFilter === "all" ? allTrades : allTrades.filter((trade) => trade.side === tradeFilter);
+  const tradeTimes = allTrades.map((trade) => Number(trade.time || 0)).filter((time) => time > 0);
+  const dateLabel = (time) => time ? new Date(time).toLocaleDateString("ko-KR", { year:"numeric", month:"2-digit", day:"2-digit", timeZone:"Asia/Seoul" }).replace(/\s/g, "") : "—";
+  $("tradeDateStart").textContent = tradeTimes.length ? dateLabel(Math.min(...tradeTimes)) : "—";
+  $("tradeDateEnd").textContent = tradeTimes.length ? dateLabel(Math.max(...tradeTimes)) : "—";
+  $("tradeTimeline").innerHTML = trades.length ? trades.slice(0,visibleTradeCount).map((t) => {
+    const isBuy = t.side === "buy";
+    const symbol = escapeHtml(t.symbol || "미확인");
+    const time = new Date(t.time).toLocaleString("ko-KR", { month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZone:"Asia/Seoul" }).replace(/\.\s/g, ".").replace(/\.$/, "");
+    const contracts = number(Math.abs(Number(t.size || 0)), 4);
+    const fee = Number(t.fee || 0);
+    return `<article class="trade-timeline-item">
+      <time>${time}</time>
+      <i class="trade-timeline-dot" aria-hidden="true"></i>
+      <div class="trade-record">
+        <span class="trade-side ${isBuy ? "buy" : "sell"}">${isBuy ? "매수" : "매도"}</span>
+        <p><strong>${symbol}</strong> 무기한을 <b>${t.price ? usd(t.price) : "가격 미확인"}</b>에 ${isBuy ? "매수" : "매도"} · <b>${contracts} 계약</b> 체결${fee ? ` <small>수수료 ${usd(fee)}</small>` : ""}</p>
+      </div>
+    </article>`;
+  }).join("") : `<div class="trade-empty">해당 방향의 체결 기록이 없습니다.</div>`;
   const button = $("loadMoreTrades");
   const remaining = trades.length - visibleTradeCount;
   button.hidden = remaining <= 0;
