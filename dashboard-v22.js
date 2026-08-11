@@ -2,6 +2,7 @@ const emptyDashboard = {
   mode: "unconfigured",
   account: { total: 0, available: 0, positionMargin: 0, unrealizedPnl: 0, totalPnl: 0, todayRealizedPnl: 0 },
   performance: { startBalance: 0, endBalance: 0, netRealizedPnl: 0, returnRate: 0 },
+  assetAnalysis: { daily: [], symbolRanking: [] },
   positions: [],
   trades: [],
   closeRecords: [],
@@ -12,6 +13,12 @@ let dashboard = emptyDashboard;
 let filter = "all";
 let visibleTradeCount = 10;
 let tradeFilter = "all";
+const DAY_MS = 86_400_000;
+const kstDateKey = (value = Date.now()) => new Intl.DateTimeFormat("en-CA", {
+  year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul",
+}).format(new Date(value));
+let tradeRange = { from: kstDateKey(Date.now() - DAY_MS * 3), to: kstDateKey() };
+let analysisMonth = "";
 let coinFilter = "all";
 let recommendations = { coin: null, stock: null };
 let dashboardLoaded = false;
@@ -200,12 +207,8 @@ function renderPositions() {
 }
 
 function renderTrades() {
-  const allTrades = (dashboard.trades || []).slice(0,100);
+  const allTrades = (dashboard.trades || []).slice(0,5000);
   const trades = tradeFilter === "all" ? allTrades : allTrades.filter((trade) => trade.side === tradeFilter);
-  const tradeTimes = allTrades.map((trade) => Number(trade.time || 0)).filter((time) => time > 0);
-  const dateLabel = (time) => time ? new Date(time).toLocaleDateString("ko-KR", { year:"numeric", month:"2-digit", day:"2-digit", timeZone:"Asia/Seoul" }).replace(/\s/g, "") : "—";
-  $("tradeDateStart").textContent = tradeTimes.length ? dateLabel(Math.min(...tradeTimes)) : "—";
-  $("tradeDateEnd").textContent = tradeTimes.length ? dateLabel(Math.max(...tradeTimes)) : "—";
   $("tradeTimeline").innerHTML = trades.length ? trades.slice(0,visibleTradeCount).map((t) => {
     const isBuy = t.side === "buy";
     const symbol = escapeHtml(t.symbol || "미확인");
@@ -220,7 +223,7 @@ function renderTrades() {
         <p><strong>${symbol}</strong> 무기한을 <b>${t.price ? usd(t.price) : "가격 미확인"}</b>에 ${isBuy ? "매수" : "매도"} · <b>${contracts} 계약</b> 체결${fee ? ` <small>수수료 ${usd(fee)}</small>` : ""}</p>
       </div>
     </article>`;
-  }).join("") : `<div class="trade-empty">해당 방향의 체결 기록이 없습니다.</div>`;
+  }).join("") : `<div class="trade-empty">선택한 기간에 해당 방향의 체결 기록이 없습니다.</div>`;
   const button = $("loadMoreTrades");
   const remaining = trades.length - visibleTradeCount;
   button.hidden = remaining <= 0;
@@ -266,6 +269,64 @@ function renderHistory() {
   $("historyDescription").textContent="7월 1일부터 현재까지 입출금과 미실현손익을 제외하고, 청산손익·수수료·펀딩비를 합산한 순실현 성과입니다.";
 }
 
+function renderAssetAnalysis() {
+  const analysis = dashboard.assetAnalysis || {};
+  const totalProfit = Number(analysis.totalProfit || 0);
+  const totalLoss = Number(analysis.totalLoss || 0);
+  const gross = totalProfit + Math.abs(totalLoss);
+  const profitWidth = gross ? totalProfit / gross * 100 : 50;
+  $("analysisTotalProfit").textContent = usd(totalProfit, true);
+  $("analysisTotalLoss").textContent = usd(totalLoss, true);
+  $("analysisProfitCount").textContent = `이익 정산 ${number(analysis.profitCount, 0)}건`;
+  $("analysisLossCount").textContent = `손실 정산 ${number(analysis.lossCount, 0)}건`;
+  $("analysisProfitBar").style.width = `${profitWidth}%`;
+  $("analysisLossBar").style.width = `${100 - profitWidth}%`;
+  const netPnl = Number(analysis.netRealizedPnl || 0);
+  $("analysisNetPnl").textContent = usd(netPnl, true);
+  $("analysisNetPnl").className = netPnl >= 0 ? "positive" : "negative";
+  $("analysisWinRate").textContent = `${number(analysis.winRate, 1)}%`;
+  $("analysisAverageProfit").textContent = usd(analysis.averageProfit, true);
+  $("analysisAverageProfit").className = "positive";
+  $("analysisAverageLoss").textContent = usd(analysis.averageLoss, true);
+  $("analysisAverageLoss").className = "negative";
+  $("analysisProfitFactor").textContent = analysis.profitFactor == null ? "—" : `${number(analysis.profitFactor, 2)} : 1`;
+  const costs = Number(analysis.fees || 0) + Number(analysis.funding || 0);
+  $("analysisCosts").textContent = usd(costs, true);
+  $("analysisCosts").className = costs >= 0 ? "positive" : "negative";
+  const analysisEnd = kstDateKey();
+  $("analysisPeriod").textContent = `2026.07.01 — ${analysisEnd.replaceAll("-", ".")}`;
+
+  const daily = analysis.daily || [];
+  const months = [...new Set(daily.map((day) => day.date.slice(0, 7)))];
+  if (!analysisMonth || !months.includes(analysisMonth)) analysisMonth = months.at(-1) || kstDateKey().slice(0, 7);
+  $("analysisMonthTabs").innerHTML = months.map((month) => `<button type="button" data-analysis-month="${month}" class="${month === analysisMonth ? "active" : ""}">${month.replace("-", ".")}</button>`).join("");
+  const monthRows = daily.filter((day) => day.date.startsWith(analysisMonth));
+  const monthTotal = monthRows.reduce((sum, day) => sum + Number(day.netPnl || 0), 0);
+  $("analysisMonthTotal").innerHTML = `<span>${analysisMonth.replace("-", "년 ")}월 순손익</span><strong class="${monthTotal >= 0 ? "positive" : "negative"}">${usd(monthTotal, true)}</strong>`;
+  const [year, month] = analysisMonth.split("-").map(Number);
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const byDate = new Map(monthRows.map((day) => [day.date, day]));
+  const blanks = Array.from({ length: firstWeekday }, () => `<span class="calendar-day blank"></span>`).join("");
+  const cells = Array.from({ length: daysInMonth }, (_, index) => {
+    const dayNumber = index + 1;
+    const date = `${analysisMonth}-${String(dayNumber).padStart(2, "0")}`;
+    const row = byDate.get(date);
+    const value = Number(row?.netPnl || 0);
+    const future = date > kstDateKey();
+    const tone = !row ? "empty" : value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
+    return `<article class="calendar-day ${tone}${future ? " future" : ""}" title="${date}${row ? ` · ${usd(value, true)}` : ""}"><span>${dayNumber}</span>${row ? `<strong>${value > 0 ? "+" : ""}${number(value, 2)}</strong>` : ""}</article>`;
+  }).join("");
+  $("analysisCalendar").innerHTML = blanks + cells;
+
+  const ranking = (analysis.symbolRanking || []).slice(0, 8);
+  const maxPnl = Math.max(1, ...ranking.map((item) => Math.abs(Number(item.realizedPnl || 0))));
+  $("analysisRanking").innerHTML = ranking.length ? ranking.map((item, index) => {
+    const pnl = Number(item.realizedPnl || 0);
+    return `<article><div><span><i>${index + 1}</i>${escapeHtml(item.symbol)}</span><strong class="${pnl >= 0 ? "positive" : "negative"}">${usd(pnl, true)}</strong></div><div class="ranking-bar"><i class="${pnl >= 0 ? "positive" : "negative"}" style="width:${Math.max(3, Math.abs(pnl) / maxPnl * 100)}%"></i></div><small>정산 ${number(item.settlements, 0)}건</small></article>`;
+  }).join("") : `<div class="trade-empty">7월 1일 이후 종목별 실현손익 기록이 없습니다.</div>`;
+}
+
 function render() {
   const a = dashboard.account, positions = dashboard.positions;
   const effectiveTotal = getEffectiveTotal(a);
@@ -296,11 +357,12 @@ function render() {
   $("positionBadge").textContent = positions.length;
   const longs = positions.filter(p=>p.side==="long").length;
   $("longShortCount").textContent = `Long ${longs} · Short ${positions.length-longs}`;
-  renderPositions(); renderTrades(); renderHistory();
+  renderPositions(); renderTrades(); renderHistory(); renderAssetAnalysis();
 }
 
 async function fetchDashboard() {
-  return fetch("/api/dashboard", {
+  const query = new URLSearchParams({ tradeFrom: tradeRange.from, tradeTo: tradeRange.to });
+  return fetch(`/api/dashboard?${query}`, {
     cache: "no-store",
   });
 }
@@ -312,6 +374,9 @@ async function loadDashboard(showToast = false) {
     if (!response.ok) throw new Error((await response.json()).error);
     dashboard = await response.json();
     dashboardLoaded = true;
+    if (dashboard.tradeRange?.from && dashboard.tradeRange?.to) {
+      tradeRange = { from: dashboard.tradeRange.from, to: dashboard.tradeRange.to };
+    }
     dashboard.account.total = getEffectiveTotal(dashboard.account);
     $("modeBadge").textContent = "LIVE";
     if (showToast) toast("Gate.io 데이터를 새로 불러왔습니다.");
@@ -344,8 +409,28 @@ $("refreshButton").addEventListener("click",()=>{
   else loadDashboard(true);
 });
 $("loadMoreTrades").addEventListener("click",()=>{
-  visibleTradeCount=Math.min(100,visibleTradeCount+10);
+  visibleTradeCount=Math.min(5000,visibleTradeCount+10);
   renderTrades();
+});
+$("tradeDateForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const from = $("tradeDateStart").value;
+  const to = $("tradeDateEnd").value;
+  const today = kstDateKey();
+  if (!from || !to) return toast("시작일과 종료일을 모두 선택해 주세요.");
+  if (from > to) return toast("시작일은 종료일보다 늦을 수 없습니다.");
+  if (to > today) return toast("미래 날짜는 조회할 수 없습니다.");
+  const days = Math.floor((Date.parse(`${to}T00:00:00+09:00`) - Date.parse(`${from}T00:00:00+09:00`)) / DAY_MS) + 1;
+  if (days > 31) return toast("한 번에 최대 31일까지 조회할 수 있습니다.");
+  tradeRange = { from, to };
+  visibleTradeCount = 10;
+  const button = $("applyTradeDates");
+  button.disabled = true;
+  button.textContent = "조회 중";
+  const loaded = await loadDashboard(false);
+  button.disabled = false;
+  button.textContent = "적용";
+  toast(loaded ? `${from.replaceAll("-", ".")} — ${to.replaceAll("-", ".")} 체결을 불러왔습니다.` : "체결 내역을 불러오지 못했습니다.");
 });
 document.querySelectorAll("[data-trade-filter]").forEach((button)=>button.addEventListener("click",()=>{
   document.querySelectorAll("[data-trade-filter]").forEach((item)=>item.classList.remove("active"));
@@ -361,12 +446,22 @@ document.querySelectorAll("[data-coin-filter]").forEach((button)=>button.addEven
   renderCoinRecommendations();
 }));
 document.addEventListener("click", (event) => {
+  const monthButton = event.target.closest("[data-analysis-month]");
+  if (monthButton) {
+    analysisMonth = monthButton.dataset.analysisMonth;
+    renderAssetAnalysis();
+    return;
+  }
   const retry = event.target.closest("[data-retry-market]");
   if (retry) loadRecommendations(retry.dataset.retryMarket, true);
 });
 window.addEventListener("hashchange", resolveView);
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("ko-KR",{hour12:false,timeZone:"Asia/Seoul"})+" KST"; },1000);
 await checkHealth();
+$("tradeDateStart").max = kstDateKey();
+$("tradeDateEnd").max = kstDateKey();
+$("tradeDateStart").value = tradeRange.from;
+$("tradeDateEnd").value = tradeRange.to;
 resolveView();
 setInterval(()=>{
   if (!["#coin-recommendations", "#stock-recommendations"].includes(window.location.hash)) loadDashboard(false);

@@ -10,6 +10,8 @@ const PERFORMANCE_START = Math.floor(Date.parse("2026-07-01T00:00:00+09:00") / 1
 const PERFORMANCE_START_BALANCE = 10_000;
 const PERFORMANCE_TYPES = new Set(["pnl", "fee", "fund"]);
 const ACCOUNT_BOOK_LIMIT = 1000;
+const TRADE_RANGE_DAYS = 31;
+const TRADE_CHUNK_SECONDS = 7 * 24 * 60 * 60;
 const RANGE_SECONDS = 14 * 24 * 60 * 60;
 
 const kstStartOfDay = () => {
@@ -19,6 +21,57 @@ const kstStartOfDay = () => {
   }).format(now);
   return Date.parse(`${parts}T00:00:00+09:00`) / 1000;
 };
+
+export function parseTradeRange(query = {}, now = Date.now()) {
+  const fromDate = String(query.tradeFrom || "");
+  const toDate = String(query.tradeTo || "");
+  if (!fromDate && !toDate) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+    throw new RangeError("체결 조회 날짜 형식이 올바르지 않습니다.");
+  }
+  const fromMs = Date.parse(`${fromDate}T00:00:00+09:00`);
+  const toMs = Date.parse(`${toDate}T23:59:59.999+09:00`);
+  const todayEnd = Date.parse(`${new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(now))}T23:59:59.999+09:00`);
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs > toMs) {
+    throw new RangeError("체결 조회 시작일과 종료일을 확인해 주세요.");
+  }
+  if (toMs > todayEnd) throw new RangeError("미래 날짜는 조회할 수 없습니다.");
+  const days = Math.floor((toMs - fromMs) / 86_400_000) + 1;
+  if (days > TRADE_RANGE_DAYS) throw new RangeError(`체결 내역은 한 번에 최대 ${TRADE_RANGE_DAYS}일까지 조회할 수 있습니다.`);
+  return { from: Math.floor(fromMs / 1000), to: Math.floor(toMs / 1000), fromDate, toDate };
+}
+
+export function splitTradeRange(range) {
+  if (!range) return [];
+  const chunks = [];
+  for (let from = range.from; from <= range.to; from += TRADE_CHUNK_SECONDS) {
+    chunks.push({ from, to: Math.min(range.to, from + TRADE_CHUNK_SECONDS - 1) });
+  }
+  return chunks;
+}
+
+async function loadTrades(range) {
+  if (!range) return gateGet("/futures/usdt/my_trades", "limit=100");
+  const pages = await Promise.all(splitTradeRange(range).map(async ({ from, to }) => {
+    const rows = [];
+    for (let offset = 0; ; offset += ACCOUNT_BOOK_LIMIT) {
+      const query = new URLSearchParams({
+        from: String(from), to: String(to), limit: String(ACCOUNT_BOOK_LIMIT), offset: String(offset),
+      }).toString();
+      const page = await gateGet("/futures/usdt/my_trades_timerange", query);
+      const values = Array.isArray(page) ? page : [];
+      rows.push(...values);
+      if (values.length < ACCOUNT_BOOK_LIMIT) break;
+    }
+    return rows;
+  }));
+  const unique = new Map();
+  pages.flat().forEach((trade) => unique.set(String(trade.id), trade));
+  return [...unique.values()].sort((a, b) => {
+    const timeOf = (trade) => n(trade.create_time_ms) || n(trade.create_time) * 1000;
+    return timeOf(b) - timeOf(a);
+  });
+}
 
 async function loadAccountBook(from, to) {
   const ranges = [];
@@ -93,6 +146,60 @@ export function calculatePerformance(book, endAt = Date.now()) {
   };
 }
 
+export function calculateAssetAnalysis(book) {
+  const settlements = book.filter((row) => row.type === "pnl");
+  const profits = settlements.map((row) => n(row.change)).filter((value) => value > 0);
+  const losses = settlements.map((row) => n(row.change)).filter((value) => value < 0);
+  const totalProfit = profits.reduce((sum, value) => sum + value, 0);
+  const totalLoss = losses.reduce((sum, value) => sum + value, 0);
+  const settledCount = profits.length + losses.length;
+  const daily = new Map();
+  const symbols = new Map();
+
+  book.forEach((row) => {
+    if (!PERFORMANCE_TYPES.has(row.type)) return;
+    const change = n(row.change);
+    const date = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul",
+    }).format(new Date(n(row.time) * 1000));
+    const day = daily.get(date) || { date, netPnl: 0, settlementPnl: 0, fees: 0, funding: 0 };
+    day.netPnl += change;
+    if (row.type === "pnl") day.settlementPnl += change;
+    if (row.type === "fee") day.fees += change;
+    if (row.type === "fund") day.funding += change;
+    daily.set(date, day);
+
+    if (row.type === "pnl" && row.contract) {
+      const symbol = String(row.contract);
+      const item = symbols.get(symbol) || { symbol, realizedPnl: 0, settlements: 0 };
+      item.realizedPnl += change;
+      item.settlements += 1;
+      symbols.set(symbol, item);
+    }
+  });
+
+  return {
+    startAt: PERFORMANCE_START * 1000,
+    totalProfit,
+    totalLoss,
+    netSettlementPnl: totalProfit + totalLoss,
+    netRealizedPnl: totalProfit + totalLoss
+      + book.filter((row) => row.type === "fee" || row.type === "fund").reduce((sum, row) => sum + n(row.change), 0),
+    profitCount: profits.length,
+    lossCount: losses.length,
+    settledCount,
+    winRate: settledCount ? profits.length / settledCount * 100 : 0,
+    averageProfit: profits.length ? totalProfit / profits.length : 0,
+    averageLoss: losses.length ? totalLoss / losses.length : 0,
+    profitFactor: totalLoss ? totalProfit / Math.abs(totalLoss) : null,
+    fees: book.filter((row) => row.type === "fee").reduce((sum, row) => sum + n(row.change), 0),
+    funding: book.filter((row) => row.type === "fund").reduce((sum, row) => sum + n(row.change), 0),
+    daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    symbolRanking: [...symbols.values()].sort((a, b) => b.realizedPnl - a.realizedPnl),
+    basis: "Gate futures account book: pnl, fee and fund rows since 2026-07-01 KST",
+  };
+}
+
 export function normalizePosition(position) {
   const size = n(position.size);
   const value = Math.abs(n(
@@ -163,10 +270,11 @@ export default async function handler(req, res) {
 
   try {
     const now = Math.floor(Date.now() / 1000);
+    const tradeRange = parseTradeRange(req.query || {});
     const [account, rawPositions, rawTrades, accountBook] = await Promise.all([
       gateGet("/futures/usdt/accounts"),
       gateGet("/futures/usdt/positions", "holding=true"),
-      gateGet("/futures/usdt/my_trades", "limit=100"),
+      loadTrades(tradeRange),
       loadAccountBook(PERFORMANCE_START, now),
     ]);
 
@@ -197,6 +305,7 @@ export default async function handler(req, res) {
     const total = n(account.total);
     const accountMargin = normalizeAccountMargin(account, positions);
     const performance = calculatePerformance(book);
+    const assetAnalysis = calculateAssetAnalysis(book);
     return json(res, 200, {
       mode: "live",
       updatedAt: new Date().toISOString(),
@@ -221,12 +330,15 @@ export default async function handler(req, res) {
         returnRate: performance.returnRate,
         basis: performance.basis,
       },
+      assetAnalysis,
       positions,
       trades,
+      tradeRange: tradeRange ? { from: tradeRange.fromDate, to: tradeRange.toDate } : null,
       closeRecords: [],
       history: performance.history,
     });
   } catch (error) {
-    return json(res, 502, { error: error instanceof Error ? error.message : "Dashboard request failed" });
+    const status = error instanceof RangeError ? 400 : 502;
+    return json(res, status, { error: error instanceof Error ? error.message : "Dashboard request failed" });
   }
 }

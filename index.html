@@ -55,9 +55,14 @@
 
       <div class="lower-grid trades-only">
         <section class="panel trade-timeline-panel" id="trades">
-          <div class="trade-section-tabs"><a href="#positions">현재 포지션</a><span class="active">최근 체결</span></div>
+          <div class="trade-section-tabs"><span class="active">최근 체결</span></div>
           <div class="trade-toolbar">
-            <div class="trade-date-range" aria-label="조회된 체결 기간"><span id="tradeDateStart">—</span><b>→</b><span id="tradeDateEnd">—</span></div>
+            <form id="tradeDateForm" class="trade-date-range" aria-label="체결 조회 기간">
+              <label><span class="sr-only">시작일</span><input id="tradeDateStart" name="tradeFrom" type="date" required /></label>
+              <b aria-hidden="true">→</b>
+              <label><span class="sr-only">종료일</span><input id="tradeDateEnd" name="tradeTo" type="date" required /></label>
+              <button id="applyTradeDates" type="submit">적용</button>
+            </form>
             <div class="trade-market-pill">USDT 무기한 선물 <span>▾</span></div>
             <div class="filter-pills trade-filter-pills" aria-label="체결 방향 필터"><button class="active" data-trade-filter="all">전체</button><button data-trade-filter="buy">매수</button><button data-trade-filter="sell">매도</button></div>
           </div>
@@ -66,6 +71,39 @@
         </section>
 
       </div>
+
+      <section class="panel asset-analysis" id="assetAnalysis">
+        <div class="analysis-head">
+          <div><p class="eyebrow">TRADING ANALYSIS</p><h2>Futures Assets Analysis</h2><p>7월 1일부터 Gate.io 선물 원장에서 집계한 실현 성과입니다.</p></div>
+          <span id="analysisPeriod" class="period-label">07.01 — TODAY</span>
+        </div>
+        <div class="analysis-summary">
+          <article class="analysis-profit"><small>총이익</small><strong id="analysisTotalProfit">—</strong><span id="analysisProfitCount">—</span></article>
+          <div class="analysis-split-bar" aria-hidden="true"><i id="analysisProfitBar"></i><b id="analysisLossBar"></b></div>
+          <article class="analysis-loss"><small>총손실</small><strong id="analysisTotalLoss">—</strong><span id="analysisLossCount">—</span></article>
+        </div>
+        <div class="analysis-kpis">
+          <article><small>순실현손익</small><strong id="analysisNetPnl">—</strong></article>
+          <article><small>승률</small><strong id="analysisWinRate">—</strong></article>
+          <article><small>평균 이익</small><strong id="analysisAverageProfit">—</strong></article>
+          <article><small>평균 손실</small><strong id="analysisAverageLoss">—</strong></article>
+          <article><small>손익비</small><strong id="analysisProfitFactor">—</strong></article>
+          <article><small>수수료 + 펀딩</small><strong id="analysisCosts">—</strong></article>
+        </div>
+        <div class="analysis-detail-grid">
+          <section class="pnl-calendar-panel">
+            <div class="analysis-subhead"><div><small>DAILY PNL</small><h3>일별 손익 캘린더</h3></div><div id="analysisMonthTabs" class="month-tabs" aria-label="월 선택"></div></div>
+            <div id="analysisMonthTotal" class="month-total"><span>월간 순손익</span><strong>—</strong></div>
+            <div class="calendar-weekdays" aria-hidden="true"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+            <div id="analysisCalendar" class="pnl-calendar"></div>
+          </section>
+          <section class="pnl-ranking-panel">
+            <div class="analysis-subhead"><div><small>PNL RANKING</small><h3>종목별 실현손익</h3></div><span>상위 8개</span></div>
+            <div id="analysisRanking" class="pnl-ranking"></div>
+          </section>
+        </div>
+        <p class="analysis-basis">총이익·총손실·승률·종목별 순위는 원장의 <code>pnl</code> 항목, 일별 순손익은 <code>pnl + fee + fund</code>를 기준으로 계산합니다. 입출금과 미실현손익은 제외합니다.</p>
+      </section>
     </div>
 
     <div class="content app-view recommendation-view" id="view-coin" data-app-view="coin" hidden>
