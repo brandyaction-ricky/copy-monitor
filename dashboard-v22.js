@@ -14,9 +14,19 @@ let filter = "all";
 let visibleTradeCount = 10;
 let tradeFilter = "all";
 const DAY_MS = 86_400_000;
+const PERFORMANCE_START_UTC = Date.UTC(2026, 6, 1);
 const kstDateKey = (value = Date.now()) => new Intl.DateTimeFormat("en-CA", {
   year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul",
 }).format(new Date(value));
+const performancePeriodLabel = (value = Date.now()) => {
+  const [year, month, day] = kstDateKey(value).split("-").map(Number);
+  const elapsedDays = Math.max(0, Math.floor((Date.UTC(year, month - 1, day) - PERFORMANCE_START_UTC) / DAY_MS));
+  return `07.01–${String(month).padStart(2, "0")}.${String(day).padStart(2, "0")} · ${elapsedDays}일차`;
+};
+const renderPerformancePeriod = () => {
+  const label = document.querySelector(".overview-value-panel .period-label");
+  if (label) label.textContent = performancePeriodLabel();
+};
 let tradeRange = { from: kstDateKey(Date.now() - DAY_MS * 3), to: kstDateKey() };
 let analysisMonth = "";
 let coinFilter = "all";
@@ -466,5 +476,5 @@ resolveView();
 setInterval(()=>{
   if (!["#coin-recommendations", "#stock-recommendations"].includes(window.location.hash)) loadDashboard(false);
 },30_000);
-setInterval(()=>{
-},60_000);
+renderPerformancePeriod();
+setInterval(renderPerformancePeriod, 60_000);
