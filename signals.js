@@ -1,0 +1,97 @@
+const DEFAULT_WATCHLIST = ["NVDA","AAPL","MSFT","AMZN","META","TSLA","AMD","AVGO"];
+const STORE_KEY = "tooja-us-watchlist-v1";
+const $s = (id) => document.getElementById(id);
+const escapeSignalHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[character]);
+const loadWatchlist = () => {
+  try { const saved = JSON.parse(localStorage.getItem(STORE_KEY)); return Array.isArray(saved) && saved.length ? saved : DEFAULT_WATCHLIST; }
+  catch { return DEFAULT_WATCHLIST; }
+};
+let watchlist = loadWatchlist();
+let signalPayload = null;
+let signalTab = "market";
+
+function saveWatchlist() { localStorage.setItem(STORE_KEY, JSON.stringify(watchlist)); }
+function signalTime(value) {
+  if (!value) return "시간 미확인";
+  const ms = Date.now() - new Date(value).getTime();
+  const minutes = Math.max(0, Math.round(ms / 60000));
+  if (minutes < 1) return "방금 전";
+  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes < 1440) return `${Math.round(minutes / 60)}시간 전`;
+  return new Date(value).toLocaleDateString("ko-KR", { month:"numeric", day:"numeric", timeZone:"Asia/Seoul" });
+}
+function renderWatchlistChips() {
+  const target = $s("watchlistChips");
+  if (!target) return;
+  target.innerHTML = watchlist.map((symbol) => `<span class="watchlist-chip">★ ${escapeSignalHtml(symbol)} <button type="button" data-remove-watch="${escapeSignalHtml(symbol)}" aria-label="${escapeSignalHtml(symbol)} 삭제">×</button></span>`).join("");
+}
+function marketItems() {
+  const items = signalPayload?.news || [];
+  if (signalTab === "watch") return items.filter((item) => (item.relatedTickers || []).some((ticker) => watchlist.includes(ticker)));
+  return items;
+}
+function renderSignals() {
+  renderWatchlistChips();
+  if (!signalPayload) return;
+  const items = marketItems();
+  const updated = new Date(signalPayload.updatedAt).toLocaleString("ko-KR", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", hour12:false, timeZone:"Asia/Seoul" });
+  $s("signalUpdatedAt").textContent = `${updated} KST`;
+  $s("signalIssueCount").textContent = `${items.length}개 이슈`;
+  $s("signalIssueList").innerHTML = items.length ? items.slice(0, 30).map((item, index) => {
+    const related = (item.relatedTickers || []).filter((ticker) => signalPayload.symbols.includes(ticker)).slice(0, 6);
+    const safeLink = item.link && /^https?:\/\//i.test(item.link) ? item.link : "#";
+    const tag = item.ageMinutes <= 15 ? "새 이슈" : item.score >= 60 ? "주목" : "업데이트";
+    return `<article class="issue-card">
+      <div class="issue-rank">${index + 1}</div>
+      <div class="issue-body">
+        <h3><a href="${escapeSignalHtml(safeLink)}" target="_blank" rel="noopener noreferrer">${escapeSignalHtml(item.title)}</a></h3>
+        <div class="issue-meta"><span>${escapeSignalHtml(item.publisher)}</span><span>${signalTime(item.publishedAt)}</span><span>${tag}</span></div>
+        <div class="issue-tickers">${related.map((ticker) => `<span>${escapeSignalHtml(ticker)}${watchlist.includes(ticker) ? " ★" : ""}</span>`).join("")}</div>
+      </div>
+      <div class="issue-score"><b>${item.score}</b><small>이슈점수</small></div>
+    </article>`;
+  }).join("") : `<div class="panel signal-empty">${signalTab === "watch" ? "현재 관심종목과 연결된 최신 이슈가 없습니다." : "최신 이슈를 찾지 못했습니다."}</div>`;
+
+  const stocks = (signalPayload.stocks || []).filter((stock) => watchlist.includes(stock.symbol));
+  $s("watchStockList").innerHTML = stocks.length ? stocks.map((stock) => {
+    const change = Number(stock.changePercent);
+    const hasChange = Number.isFinite(change);
+    return `<article class="watch-stock"><div class="watch-stock-top"><strong>${escapeSignalHtml(stock.symbol)}</strong><em class="${change >= 0 ? "up" : "down"}">${hasChange ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` : "—"}</em></div><p>${escapeSignalHtml(stock.name || stock.symbol)} · ${stock.price == null ? "가격 미확인" : `$${Number(stock.price).toLocaleString("en-US", { maximumFractionDigits:2 })}`}</p></article>`;
+  }).join("") : `<div class="signal-empty">관심종목 시세를 불러오는 중입니다.</div>`;
+}
+async function loadSignals(showToast = false) {
+  const refresh = $s("signalRefresh");
+  if (refresh) refresh.disabled = true;
+  $s("signalIssueList").innerHTML = Array.from({length:5}, () => `<div class="signal-loading"></div>`).join("");
+  try {
+    const symbols = [...new Set([...DEFAULT_WATCHLIST, ...watchlist])].slice(0, 20);
+    const response = await fetch(`/api/signals?symbols=${encodeURIComponent(symbols.join(","))}`, { cache:"no-store" });
+    if (!response.ok) throw new Error((await response.json()).error || "실시간 이슈 조회 실패");
+    signalPayload = await response.json();
+    renderSignals();
+    if (showToast && typeof window.tooJaToast === "function") window.tooJaToast("미국주식 이슈를 갱신했습니다.");
+  } catch (error) {
+    $s("signalIssueList").innerHTML = `<div class="panel signal-empty"><strong>실시간 이슈를 불러오지 못했습니다.</strong><br>${escapeSignalHtml(error.message)}</div>`;
+  } finally { if (refresh) refresh.disabled = false; }
+}
+function initSignals() {
+  renderWatchlistChips();
+  document.querySelectorAll("[data-signal-tab]").forEach((button) => button.addEventListener("click", () => {
+    document.querySelectorAll("[data-signal-tab]").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active"); signalTab = button.dataset.signalTab; renderSignals();
+  }));
+  $s("watchlistForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = $s("watchlistInput");
+    const symbol = input.value.toUpperCase().trim().replace(/[^A-Z0-9.\-]/g, "");
+    if (!symbol || watchlist.includes(symbol)) { input.value = ""; return; }
+    watchlist = [...watchlist, symbol].slice(-20); saveWatchlist(); input.value = ""; await loadSignals();
+  });
+  document.addEventListener("click", async (event) => {
+    const remove = event.target.closest("[data-remove-watch]");
+    if (!remove) return;
+    watchlist = watchlist.filter((symbol) => symbol !== remove.dataset.removeWatch); saveWatchlist(); await loadSignals();
+  });
+  $s("signalRefresh")?.addEventListener("click", () => loadSignals(true));
+}
+window.tooJaSignals = { init: initSignals, load: loadSignals, refresh: () => loadSignals(true) };
