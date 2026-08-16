@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#070b10" />
+  <title>Tooja — 비트코인 전문 트레이딩</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/bitcoin.css" />
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <div><span class="live-dot"></span><span>BTC Professional Desk</span><time id="bitcoinClock"></time></div>
+      <nav class="app-tabs" aria-label="주요 메뉴">
+        <a href="/#positions">포지션</a>
+        <a href="/bitcoin.html" class="active">비트코인 트레이딩</a>
+        <a href="/#stock-recommendations">주식 추천</a>
+        <a href="/signals.html">실시간 시그널</a>
+      </nav>
+      <div class="top-actions"><span class="badge">BTC LIVE</span><button id="bitcoinRefresh" type="button">↻ <span>새로고침</span></button></div>
+    </header>
+
+    <div class="content bitcoin-view">
+      <section class="hero bitcoin-hero">
+        <div>
+          <p class="eyebrow">BTC/USDT · MULTI-TIMEFRAME EXECUTION</p>
+          <h1>비트코인 전문 트레이딩 데스크</h1>
+          <p>1주·1일·4시간·1시간으로 방향을 정하고, 15분 구조와 5분봉 트리거로 진입을 검증합니다.</p>
+        </div>
+        <div class="btc-market-badge"><span>₿</span><div><small>Gate.io 무기한 선물</small><strong id="btcMarketStatus">데이터 연결 중</strong></div></div>
+      </section>
+
+      <section id="bitcoinLoading" class="bitcoin-loading" aria-live="polite">
+        <div></div><div></div><div></div>
+      </section>
+
+      <div id="bitcoinDashboard" hidden>
+        <section class="btc-summary-grid">
+          <article class="panel btc-price-card">
+            <small>현재 마크 가격</small>
+            <strong id="btcPrice">—</strong>
+            <div><span id="btcChange">—</span><span id="btcUpdated">—</span></div>
+          </article>
+          <article class="panel btc-verdict-card">
+            <div class="btc-verdict-head"><small>현재 결론</small><span id="btcVerdictBadge">대기</span></div>
+            <strong id="btcStatus">분석 중</strong>
+            <p id="btcExecutionRule">—</p>
+          </article>
+          <article class="panel btc-score-card">
+            <small>방향 점수</small>
+            <div><span>LONG <b id="btcLongScore">—</b></span><span>SHORT <b id="btcShortScore">—</b></span></div>
+            <p>점수 차가 작거나 상위·하위 시간대가 충돌하면 진입을 보류합니다.</p>
+          </article>
+        </section>
+
+        <section class="panel btc-timeframe-panel">
+          <div class="btc-section-head"><div><p class="eyebrow">TOP-DOWN BIAS</p><h2>다중 시간대 방향</h2></div><span id="btcCandleTime">최근 5분봉 —</span></div>
+          <div id="btcTimeframes" class="btc-timeframes"></div>
+        </section>
+
+        <section class="btc-main-grid">
+          <div>
+            <div class="btc-section-head plan-heading"><div><p class="eyebrow">EXECUTION PLAN</p><h2>상세 진입 시나리오</h2></div><div class="btc-plan-switch"><button class="active" data-plan="long">LONG 계획</button><button data-plan="short">SHORT 계획</button></div></div>
+            <section id="btcPlanCard" class="panel btc-plan-card"></section>
+          </div>
+
+          <aside class="btc-side-stack">
+            <section class="panel btc-checklist-panel">
+              <div class="btc-section-head"><div><h2>진입 체크리스트</h2><p>실행 전 필수 확인</p></div><strong id="btcChecklistScore">—</strong></div>
+              <div id="btcChecklist" class="btc-checklist"></div>
+            </section>
+            <section class="panel btc-risk-panel">
+              <div class="btc-section-head"><div><h2>리스크 계산기</h2><p>손절 기준 포지션 크기</p></div></div>
+              <div class="btc-risk-inputs">
+                <label><span>계좌 자산</span><input id="btcAccountSize" type="number" min="100" step="100" value="10000" /></label>
+                <label><span>1회 위험</span><input id="btcRiskPercent" type="number" min="0.1" max="5" step="0.1" value="0.5" /><em>%</em></label>
+                <label><span>레버리지</span><input id="btcLeverage" type="number" min="1" max="100" step="1" value="5" /><em>×</em></label>
+              </div>
+              <dl id="btcRiskResult" class="btc-risk-result"></dl>
+            </section>
+          </aside>
+        </section>
+
+        <section class="btc-structure-grid">
+          <article class="panel"><div class="btc-section-head"><div><h2>핵심 가격 레벨</h2><p>15분 구조 기준</p></div></div><div id="btcLevels" class="btc-levels"></div></article>
+          <article class="panel"><div class="btc-section-head"><div><h2>실행 데이터</h2><p>5분봉·호가·펀딩</p></div></div><div id="btcMicroData" class="btc-micro-data"></div></article>
+        </section>
+
+        <section class="panel btc-disclaimer"><strong>실행 원칙</strong><p>표시된 진입 구간은 자동 주문 신호가 아니라 조건부 시나리오입니다. 5분봉 종가 확정, 재테스트, 손절 거리와 계좌 위험을 모두 확인한 뒤 실행해야 하며 추격 진입은 금지합니다.</p></section>
+      </div>
+    </div>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/bitcoin.js"></script>
+</body>
+</html>
