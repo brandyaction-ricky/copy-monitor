@@ -48,7 +48,7 @@ test("copies master target exposure by follower equity and copy ratio", () => {
   assert.equal(plan.target.positionRatio, 0.3);
   assert.equal(plan.target.notional, 9_000);
   assert.equal(plan.target.size, 1_500);
-  assert.equal(plan.orders[0].action, "OPEN");
+  assert.equal(plan.orders[0].action, "open");
   assert.equal(plan.orders[0].size, "1500");
   assert.equal(plan.orders[0].reduceOnly, false);
 });
@@ -63,6 +63,30 @@ test("caps target at member maximum position ratio", () => {
   assert.equal(plan.target.capped, true);
 });
 
+test("zero maximum position ratio forces an existing position flat", () => {
+  const plan = buildCopyPlan({
+    ...base,
+    follower: { ...base.follower, position: { contract: "BTC_USDT", size: 500 } },
+    settings: { ...base.settings, maxPositionRatio: 0 },
+  });
+  assert.equal(plan.target.positionRatio, 0);
+  assert.equal(plan.target.size, 0);
+  assert.equal(plan.orders.length, 1);
+  assert.equal(plan.orders[0].action, "close");
+  assert.equal(plan.orders[0].size, "-500");
+  assert.equal(plan.orders[0].reduceOnly, true);
+});
+
+test("rejects copy ratios above the configured 200 percent ceiling", () => {
+  assert.throws(
+    () => buildCopyPlan({
+      ...base,
+      settings: { ...base.settings, copyRatio: 2.01 },
+    }),
+    /copyRatio must be between 0 and 2/,
+  );
+});
+
 test("allows reduction while member emergency stop blocks new exposure", () => {
   const plan = buildCopyPlan({
     ...base,
@@ -71,7 +95,7 @@ test("allows reduction while member emergency stop blocks new exposure", () => {
   });
   assert.equal(plan.status, "READY");
   assert.equal(plan.orders.length, 1);
-  assert.equal(plan.orders[0].action, "REDUCE");
+  assert.equal(plan.orders[0].action, "reduce");
   assert.equal(plan.orders[0].size, "-500");
   assert.equal(plan.orders[0].reduceOnly, true);
 });
@@ -85,10 +109,10 @@ test("splits a direction flip into close then open and can block only the open l
   });
   assert.equal(plan.status, "PARTIAL_READY");
   assert.equal(plan.orders.length, 1);
-  assert.equal(plan.orders[0].action, "FLIP_CLOSE");
+  assert.equal(plan.orders[0].action, "flip_close");
   assert.equal(plan.orders[0].size, "-500");
   assert.equal(plan.blockedOrders.length, 1);
-  assert.equal(plan.blockedOrders[0].action, "FLIP_OPEN");
+  assert.equal(plan.blockedOrders[0].action, "flip_open");
 });
 
 test("returns NOOP when drift is below configured tolerance", () => {
