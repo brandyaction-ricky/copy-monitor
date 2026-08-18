@@ -21,7 +21,7 @@ const kstDateKey = (value = Date.now()) => new Intl.DateTimeFormat("en-CA", {
 const performancePeriodLabel = (value = Date.now()) => {
   const [year, month, day] = kstDateKey(value).split("-").map(Number);
   const elapsedDays = Math.max(0, Math.floor((Date.UTC(year, month - 1, day) - PERFORMANCE_START_UTC) / DAY_MS));
-  return `07.01–${String(month).padStart(2, "0")}.${String(day).padStart(2, "0")} · ${elapsedDays}일차`;
+  return `07.01 ~ ${String(month).padStart(2, "0")}.${String(day).padStart(2, "0")} · ${elapsedDays}일차`;
 };
 const renderPerformancePeriod = () => {
   const label = document.querySelector(".overview-value-panel .period-label");

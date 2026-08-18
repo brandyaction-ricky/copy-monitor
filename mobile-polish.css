@@ -1,0 +1,158 @@
+@media (max-width: 760px) {
+  .overview-value-panel .performance-day-pill {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    white-space: nowrap;
+    color: #d9fff4;
+    border-color: #285d52;
+    background: #102821;
+  }
+
+  .account-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .account-summary .metric {
+    min-width: 0;
+    padding: 14px 12px;
+  }
+
+  .account-summary .metric-head {
+    align-items: flex-start;
+    gap: 5px;
+    font-size: 10px;
+  }
+
+  .account-summary .metric-head b {
+    flex: 0 0 auto;
+    padding: 5px 6px;
+  }
+
+  .account-summary .metric > strong {
+    margin: 16px 0 9px;
+    font-size: clamp(17px, 5.2vw, 23px);
+    overflow-wrap: anywhere;
+  }
+
+  .account-summary .metric p {
+    flex-wrap: wrap;
+    gap: 4px 7px;
+    font-size: 9px;
+    line-height: 1.35;
+  }
+
+  .position-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .position-card {
+    min-width: 0;
+    padding: 13px 11px;
+  }
+
+  .position-card .coin-row {
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .position-card .coin-row > div {
+    min-width: 0;
+    gap: 7px;
+  }
+
+  .position-card .coin {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    font-size: 10px;
+  }
+
+  .position-card h3 {
+    max-width: 74px;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .position-card .coin-row small,
+  .position-card .side {
+    font-size: 8px;
+  }
+
+  .position-card .side {
+    padding: 4px 5px;
+  }
+
+  .position-card .pnl-row {
+    align-items: flex-end;
+    margin: 14px 0 12px;
+  }
+
+  .position-card .pnl-row strong {
+    font-size: clamp(14px, 4.3vw, 19px);
+    overflow-wrap: anywhere;
+  }
+
+  .position-card dl {
+    gap: 7px;
+    padding-top: 11px;
+  }
+
+  .position-card dt {
+    font-size: 8px;
+  }
+
+  .position-card dd,
+  .allocation-head,
+  .allocation-head strong {
+    font-size: 9px;
+  }
+
+  .signal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .signal-layout > section:first-child {
+    order: 0;
+  }
+
+  .signal-layout > aside {
+    order: 1 !important;
+  }
+
+  .watch-stock-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .watch-stock {
+    min-width: 0;
+    padding: 11px 9px;
+  }
+
+  .watch-stock-top {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .watch-stock strong {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .watch-stock em {
+    font-size: 11px;
+  }
+
+  .watch-stock p {
+    font-size: 9px;
+  }
+}

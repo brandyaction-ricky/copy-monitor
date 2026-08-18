@@ -29,7 +29,7 @@ const saveWatchlist = () => localStorage.setItem(STORE_KEY, JSON.stringify(watch
 function patchNavigation() {
   document.querySelectorAll('a[href="#coin-recommendations"],a[href="/#coin-recommendations"]').forEach((anchor) => {
     anchor.href = "/bitcoin.html";
-    anchor.textContent = "비트코인 트레이딩";
+    anchor.textContent = "트레이딩";
   });
 }
 
