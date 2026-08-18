@@ -6,6 +6,30 @@ const directionLabel = (value) => value === "LONG" ? "상승" : value === "SHORT
 const statusLabel = (value) => value === "ENTRY_ZONE" ? "진입 구간" : value === "NO_CHASE" ? "추격 금지" : "트리거 대기";
 let bitcoinData = null;
 let selectedPlan = "long";
+let selectedStrategy = "shortTerm";
+
+function strategies() {
+  if (bitcoinData?.strategies) return bitcoinData.strategies;
+  return {
+    shortTerm: {
+      label: "단기",
+      timeframe: "15분 구조 · 5분 실행",
+      holdingPeriod: "수분~1일",
+      direction: bitcoinData.direction,
+      status: bitcoinData.status,
+      scores: bitcoinData.scores,
+      plans: bitcoinData.plans,
+      primaryPlan: bitcoinData.primaryPlan,
+      checklist: bitcoinData.checklist,
+      checklistScore: bitcoinData.checklistScore,
+      executionRule: bitcoinData.executionRule,
+    },
+  };
+}
+
+function currentStrategy() {
+  return strategies()[selectedStrategy] || strategies().shortTerm;
+}
 
 function timeText(value) {
   if (!value) return "—";
@@ -28,23 +52,50 @@ function renderTimeframes() {
   $b("btcTimeframes").innerHTML = labels.map(([key, label, role]) => {
     const frame = bitcoinData.timeframes[key];
     const tone = frame.direction === "LONG" ? "long" : frame.direction === "SHORT" ? "short" : "wait";
-    return `<article class="btc-timeframe ${tone}"><small>${label} · ${role}</small><strong>${directionLabel(frame.direction)}</strong><div><span>RSI ${numberText(frame.rsi, 1)}</span><span>EMA20 ${money(frame.ema20)}</span></div></article>`;
+    const focusFrames = selectedStrategy === "swing" ? ["week", "day", "fourHour", "oneHour"] : ["oneHour", "fifteenMinute", "fiveMinute"];
+    const focus = focusFrames.includes(key) ? "focus" : "context";
+    return `<article class="btc-timeframe ${tone} ${focus}"><small>${label} · ${role}</small><strong>${directionLabel(frame.direction)}</strong><div><span>RSI ${numberText(frame.rsi, 1)}</span><span>EMA20 ${money(frame.ema20)}</span></div></article>`;
   }).join("");
 }
 
+function verdictTone(direction) {
+  return direction === "LONG" ? "long" : direction === "SHORT" ? "short" : "wait";
+}
+
+function renderStrategyOverview() {
+  const map = strategies();
+  const bind = (key, prefix) => {
+    const strategy = map[key];
+    if (!strategy) return;
+    const badge = $b(`${prefix}Badge`);
+    badge.textContent = strategy.direction === "WAIT" ? "관망" : strategy.direction;
+    badge.className = verdictTone(strategy.direction);
+    $b(`${prefix}Status`).textContent = strategy.status;
+    $b(`${prefix}Meta`).textContent = `보유 ${strategy.holdingPeriod} · LONG ${strategy.scores.long} / SHORT ${strategy.scores.short}`;
+  };
+  bind("shortTerm", "btcShortTerm");
+  bind("swing", "btcSwing");
+  document.querySelectorAll("[data-strategy]").forEach((button) => {
+    const active = button.dataset.strategy === selectedStrategy;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
 function renderPlan() {
-  const plan = bitcoinData.plans[selectedPlan];
+  const strategy = currentStrategy();
+  const plan = strategy.plans[selectedPlan];
   const tone = plan.direction === "LONG" ? "long" : "short";
   const targetRows = plan.targets.map((target) => `<article><div><small>${escapeBtc(target.label)} 익절</small><strong>${money(target.price)}</strong></div><b>R:R ${numberText(target.rr, 2)}</b><p>${escapeBtc(target.action)}</p></article>`).join("");
   $b("btcPlanCard").className = `panel btc-plan-card ${tone}`;
   $b("btcPlanCard").innerHTML = `
     <div class="btc-plan-hero">
-      <div><span class="btc-plan-direction ${tone}">${plan.direction}</span><h3>${statusLabel(plan.status)}</h3><p>방향 점수 ${plan.score}/100 · 손절 거리 ${numberText(plan.riskPercent, 3)}%</p></div>
+      <div><div class="btc-plan-labels"><span class="btc-plan-direction ${tone}">${plan.direction}</span><span>${escapeBtc(strategy.label)} · 보유 ${escapeBtc(plan.holdingPeriod || strategy.holdingPeriod)}</span></div><h3>${statusLabel(plan.status)}</h3><p>방향 점수 ${plan.score}/100 · 손절 거리 ${numberText(plan.riskPercent, 3)}%</p></div>
       <strong>${money(plan.zone.low)}<i>—</i>${money(plan.zone.high)}</strong>
     </div>
     <div class="btc-plan-level-grid">
       <article><small>지정가 중심</small><strong>${money(plan.entry)}</strong></article>
-      <article><small>5분봉 확정 트리거</small><strong>${money(plan.trigger)}</strong></article>
+      <article><small>${escapeBtc(plan.triggerLabel || "5분봉 확정 트리거")}</small><strong>${money(plan.trigger)}</strong></article>
       <article><small>손절가</small><strong class="negative">${money(plan.stop)}</strong></article>
       <article><small>가격 리스크</small><strong>${money(plan.riskDistance)}</strong></article>
     </div>
@@ -56,14 +107,15 @@ function renderPlan() {
 }
 
 function renderChecklist() {
-  const rows = bitcoinData.checklist || [];
-  $b("btcChecklistScore").textContent = `${bitcoinData.checklistScore.passed}/${bitcoinData.checklistScore.total}`;
+  const strategy = currentStrategy();
+  const rows = strategy.checklist || [];
+  $b("btcChecklistScore").textContent = `${strategy.checklistScore.passed}/${strategy.checklistScore.total}`;
   $b("btcChecklist").innerHTML = rows.map((item) => `<div class="${item.pass ? "pass" : "fail"}"><i>${item.pass ? "✓" : "—"}</i><span>${escapeBtc(item.label)}</span></div>`).join("");
 }
 
 function calculateRisk() {
   if (!bitcoinData) return;
-  const plan = bitcoinData.plans[selectedPlan];
+  const plan = currentStrategy().plans[selectedPlan];
   const account = Math.max(0, Number($b("btcAccountSize").value || 0));
   const riskPercent = Math.max(0, Number($b("btcRiskPercent").value || 0));
   const leverage = Math.max(1, Number($b("btcLeverage").value || 1));
@@ -85,9 +137,25 @@ function calculateRisk() {
 
 function renderStructure() {
   const structure = bitcoinData.marketStructure;
-  const supports = structure.support.slice(0, 3).map((item, index) => `<div><span>S${index + 1}</span><strong>${money(item.price)}</strong><small>${item.touches}회 반응</small></div>`).join("");
-  const resistance = structure.resistance.slice(0, 3).map((item, index) => `<div><span>R${index + 1}</span><strong>${money(item.price)}</strong><small>${item.touches}회 반응</small></div>`).join("");
+  const supportRows = selectedStrategy === "swing" ? structure.swingSupport || [] : structure.support || [];
+  const resistanceRows = selectedStrategy === "swing" ? structure.swingResistance || [] : structure.resistance || [];
+  const supports = supportRows.slice(0, 3).map((item, index) => `<div><span>S${index + 1}</span><strong>${money(item.price)}</strong><small>${item.touches}회 반응</small></div>`).join("");
+  const resistance = resistanceRows.slice(0, 3).map((item, index) => `<div><span>R${index + 1}</span><strong>${money(item.price)}</strong><small>${item.touches}회 반응</small></div>`).join("");
   $b("btcLevels").innerHTML = `<section><h3>저항</h3>${resistance || "<p>가까운 저항 미확인</p>"}</section><section><h3>지지</h3>${supports || "<p>가까운 지지 미확인</p>"}</section>`;
+  if (selectedStrategy === "swing") {
+    const frame4h = bitcoinData.timeframes.fourHour;
+    const frame1d = bitcoinData.timeframes.day;
+    const fvg = structure.fvg4h?.[selectedPlan];
+    $b("btcMicroData").innerHTML = `
+      <div><span>4시간 EMA20</span><strong>${money(frame4h.ema20)}</strong></div>
+      <div><span>4시간 EMA50</span><strong>${money(frame4h.ema50)}</strong></div>
+      <div><span>일봉 EMA20</span><strong>${money(frame1d.ema20)}</strong></div>
+      <div><span>4시간 ATR</span><strong>${money(frame4h.atr)}</strong></div>
+      <div><span>4시간 RSI</span><strong>${numberText(frame4h.rsi, 1)}</strong></div>
+      <div><span>펀딩</span><strong>${bitcoinData.fundingRate >= 0 ? "+" : ""}${numberText(bitcoinData.fundingRate, 4)}%</strong></div>
+      <div class="wide"><span>${selectedPlan.toUpperCase()} 4H FVG</span><strong>${fvg ? `${money(fvg.low)}–${money(fvg.high)}` : "없음"}</strong></div>`;
+    return;
+  }
   const sweep = structure.sweep ? `${structure.sweep.direction === "LONG" ? "저점" : "고점"} 유동성 스윕 · ${money(structure.sweep.level)}` : "최근 유동성 스윕 없음";
   const fvg5Long = structure.fvg5.long ? `${money(structure.fvg5.long.low)}–${money(structure.fvg5.long.high)}` : "없음";
   const fvg5Short = structure.fvg5.short ? `${money(structure.fvg5.short.low)}–${money(structure.fvg5.short.high)}` : "없음";
@@ -101,29 +169,53 @@ function renderStructure() {
     <div class="wide"><span>유동성</span><strong>${escapeBtc(sweep)}</strong></div>`;
 }
 
+function renderSelectedStrategy() {
+  const strategy = currentStrategy();
+  const tone = verdictTone(strategy.direction);
+  $b("btcStrategyName").textContent = strategy.label;
+  $b("btcVerdictBadge").textContent = strategy.direction === "WAIT" ? "WAIT" : strategy.direction;
+  $b("btcVerdictBadge").className = tone;
+  $b("btcVerdictBadge").closest(".btc-verdict-card").dataset.tone = tone;
+  $b("btcStatus").textContent = strategy.status;
+  $b("btcExecutionRule").textContent = strategy.executionRule;
+  $b("btcLongScore").textContent = strategy.scores.long;
+  $b("btcShortScore").textContent = strategy.scores.short;
+  $b("btcLongScore").parentElement.classList.toggle("winner", strategy.scores.long > strategy.scores.short);
+  $b("btcShortScore").parentElement.classList.toggle("winner", strategy.scores.short > strategy.scores.long);
+  $b("btcTimeframeGuide").textContent = selectedStrategy === "swing"
+    ? "스윙은 주봉·일봉·4시간 정렬을 우선하고 1시간봉으로 진입을 확인합니다."
+    : "단기는 1시간·15분·5분 정렬을 우선하고 5분봉으로 진입을 확인합니다.";
+  $b("btcPlanEyebrow").textContent = selectedStrategy === "swing" ? "SWING EXECUTION" : "SHORT-TERM EXECUTION";
+  $b("btcPlanHeading").textContent = selectedStrategy === "swing" ? "스윙 진입 시나리오" : "단기 진입 시나리오";
+  $b("btcPlanContext").textContent = selectedStrategy === "swing" ? "일봉·4시간 구조와 1시간봉 확정 기준" : "15분 구조와 5분봉 확정 기준";
+  $b("btcChecklistHeading").textContent = selectedStrategy === "swing" ? "스윙 진입 체크" : "단기 진입 체크";
+  $b("btcChecklistGuide").textContent = selectedStrategy === "swing" ? "보유 전 상위 시간대 필수 확인" : "실행 전 하위 시간대 필수 확인";
+  $b("btcLevelsGuide").textContent = selectedStrategy === "swing" ? "4시간 구조 기준" : "15분 구조 기준";
+  $b("btcDataGuide").textContent = selectedStrategy === "swing" ? "4시간·일봉·펀딩" : "5분봉·호가·펀딩";
+  $b("btcExecutionPrinciple").textContent = selectedStrategy === "swing"
+    ? "스윙 진입 구간은 조건부 계획입니다. 일봉·4시간 구조를 확인하고 1시간봉 종가 확정과 재테스트 뒤 실행하며, 4시간봉 무효화 가격을 손절 기준으로 사용합니다."
+    : "단기 진입 구간은 조건부 계획입니다. 5분봉 종가 확정, 재테스트, 손절 거리와 계좌 위험을 모두 확인한 뒤 실행하며 추격 진입은 금지합니다.";
+  renderStrategyOverview();
+  renderTimeframes();
+  renderPlan();
+  renderChecklist();
+  renderStructure();
+}
+
 function renderBitcoin() {
-  $b("bitcoinLoading").hidden = true;
-  $b("bitcoinDashboard").hidden = false;
-  const direction = bitcoinData.direction;
-  const tone = direction === "LONG" ? "long" : direction === "SHORT" ? "short" : "wait";
   $b("btcPrice").textContent = money(bitcoinData.price);
   $b("btcChange").textContent = `${bitcoinData.change24h >= 0 ? "+" : ""}${numberText(bitcoinData.change24h, 2)}% 24H`;
   $b("btcChange").className = bitcoinData.change24h >= 0 ? "positive" : "negative";
   $b("btcUpdated").textContent = `${timeText(bitcoinData.updatedAt)} KST`;
   $b("btcMarketStatus").textContent = `${bitcoinData.source} · LIVE`;
-  $b("btcVerdictBadge").textContent = direction === "WAIT" ? "WAIT" : direction;
-  $b("btcVerdictBadge").className = tone;
-  $b("btcStatus").textContent = bitcoinData.status;
-  $b("btcExecutionRule").textContent = bitcoinData.executionRule;
-  $b("btcLongScore").textContent = bitcoinData.scores.long;
-  $b("btcShortScore").textContent = bitcoinData.scores.short;
   $b("btcCandleTime").textContent = `최근 확정 5분봉 ${timeText(bitcoinData.candleClosedAt)} KST`;
-  selectedPlan = bitcoinData.primaryPlan === "SHORT" ? "short" : "long";
-  document.querySelectorAll("[data-plan]").forEach((button) => button.classList.toggle("active", button.dataset.plan === selectedPlan));
-  renderTimeframes();
-  renderPlan();
-  renderChecklist();
-  renderStructure();
+  selectedPlan = currentStrategy().primaryPlan === "SHORT" ? "short" : "long";
+  document.querySelectorAll("[data-plan]").forEach((button) => {
+    const active = button.dataset.plan === selectedPlan;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  renderSelectedStrategy();
 }
 
 async function loadBitcoin(showToast = false) {
@@ -136,8 +228,10 @@ async function loadBitcoin(showToast = false) {
     renderBitcoin();
     if (showToast) toast("비트코인 데이터를 갱신했습니다.");
   } catch (error) {
-    $b("bitcoinLoading").innerHTML = `<article class="panel btc-error"><strong>실시간 분석을 불러오지 못했습니다.</strong><p>${escapeBtc(error.message)}</p><button type="button" id="btcRetry">다시 시도</button></article>`;
-    $b("btcRetry")?.addEventListener("click", () => loadBitcoin());
+    $b("btcMarketStatus").textContent = "연결 오류";
+    $b("btcStatus").textContent = "실시간 분석을 불러오지 못했습니다.";
+    $b("btcExecutionRule").textContent = error.message;
+    toast("데이터 연결에 실패했습니다. 새로고침으로 다시 시도해 주세요.");
   } finally {
     button.disabled = false;
   }
@@ -145,8 +239,24 @@ async function loadBitcoin(showToast = false) {
 
 document.querySelectorAll("[data-plan]").forEach((button) => button.addEventListener("click", () => {
   selectedPlan = button.dataset.plan;
-  document.querySelectorAll("[data-plan]").forEach((item) => item.classList.toggle("active", item === button));
+  document.querySelectorAll("[data-plan]").forEach((item) => {
+    const active = item === button;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
+  });
   renderPlan();
+  renderStructure();
+}));
+document.querySelectorAll("[data-strategy]").forEach((button) => button.addEventListener("click", () => {
+  if (!bitcoinData || !strategies()[button.dataset.strategy]) return;
+  selectedStrategy = button.dataset.strategy;
+  selectedPlan = currentStrategy().primaryPlan === "SHORT" ? "short" : "long";
+  document.querySelectorAll("[data-plan]").forEach((item) => {
+    const active = item.dataset.plan === selectedPlan;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
+  });
+  renderSelectedStrategy();
 }));
 ["btcAccountSize", "btcRiskPercent", "btcLeverage"].forEach((id) => $b(id).addEventListener("input", calculateRisk));
 $b("bitcoinRefresh").addEventListener("click", () => loadBitcoin(true));

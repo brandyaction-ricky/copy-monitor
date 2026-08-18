@@ -225,6 +225,23 @@ function directionScore(direction, frames, extras) {
   return Math.round(clamp(score, 0, 100));
 }
 
+function swingDirectionScore(direction, frames, extras) {
+  const weights = { week: 22, day: 28, fourHour: 30, oneHour: 12 };
+  let score = 0;
+  for (const [key, weight] of Object.entries(weights)) {
+    if (frames[key].direction === direction) score += weight;
+    else if (frames[key].direction !== "WAIT") score -= weight * 0.5;
+  }
+  if (frames.day.direction === direction && frames.fourHour.direction === direction) score += 8;
+  if (extras.fvg4h) score += 4;
+  if (direction === "LONG" && extras.funding > 0.08) score -= 8;
+  if (direction === "SHORT" && extras.funding < -0.08) score -= 8;
+  const swingRsi = frames.fourHour.rsi;
+  if (direction === "LONG" && swingRsi >= 75) score -= 10;
+  if (direction === "SHORT" && swingRsi <= 25) score -= 10;
+  return Math.round(clamp(score, 0, 100));
+}
+
 function selectEntryAnchor(direction, price, frame5, vwap, levels, fvg5) {
   const candidates = [];
   if (fvg5) candidates.push((fvg5.low + fvg5.high) / 2);
@@ -315,6 +332,98 @@ function buildTradePlan(direction, context, score) {
   };
 }
 
+function buildSwingTradePlan(direction, context, score) {
+  const { price, frames, levels, fvg4h, candles4h, candles1h, funding } = context;
+  const currentAtr = Math.max(frames.fourHour.atr, price * 0.006);
+  const candidates = [
+    fvg4h ? (fvg4h.low + fvg4h.high) / 2 : null,
+    frames.fourHour.ema20,
+    frames.fourHour.ema50,
+    frames.day.ema20,
+    ...(direction === "LONG" ? levels.support : levels.resistance).map((item) => item.price),
+  ].filter((value) => Number.isFinite(value) && value > 0)
+    .filter((value) => direction === "LONG" ? value <= price * 1.02 : value >= price * 0.98);
+  const anchor = candidates.sort((a, b) => Math.abs(a - price) - Math.abs(b - price))[0] || price;
+  const zoneHalf = currentAtr * 0.28;
+  const zoneLow = anchor - zoneHalf;
+  const zoneHigh = anchor + zoneHalf;
+  const recentStructure = direction === "LONG"
+    ? Math.min(...candles4h.slice(-18).map((item) => item.l))
+    : Math.max(...candles4h.slice(-18).map((item) => item.h));
+  const levelStructure = direction === "LONG"
+    ? levels.support.find((item) => item.price < zoneLow)?.price
+    : levels.resistance.find((item) => item.price > zoneHigh)?.price;
+  const structure = levelStructure || recentStructure;
+  const entry = (zoneLow + zoneHigh) / 2;
+  let stop = direction === "LONG"
+    ? Math.min(zoneLow - currentAtr, structure - currentAtr * 0.35)
+    : Math.max(zoneHigh + currentAtr, structure + currentAtr * 0.35);
+  let risk = Math.abs(entry - stop);
+  if (risk > currentAtr * 3.2) {
+    stop = direction === "LONG" ? entry - currentAtr * 3.2 : entry + currentAtr * 3.2;
+    risk = Math.abs(entry - stop);
+  }
+  if (risk < currentAtr * 1.2) {
+    stop = direction === "LONG" ? entry - currentAtr * 1.2 : entry + currentAtr * 1.2;
+    risk = Math.abs(entry - stop);
+  }
+  const nearbyTarget = direction === "LONG" ? levels.resistance[0]?.price : levels.support[0]?.price;
+  const target1Base = direction === "LONG" ? entry + risk * 1.5 : entry - risk * 1.5;
+  const target1 = nearbyTarget && (direction === "LONG" ? nearbyTarget > entry + risk : nearbyTarget < entry - risk)
+    ? nearbyTarget
+    : target1Base;
+  const target2 = direction === "LONG" ? entry + risk * 2.5 : entry - risk * 2.5;
+  const target3 = direction === "LONG" ? entry + risk * 4 : entry - risk * 4;
+  const recentHigh = Math.max(...candles1h.slice(-12).map((item) => item.h));
+  const recentLow = Math.min(...candles1h.slice(-12).map((item) => item.l));
+  const trigger = direction === "LONG" ? Math.max(zoneHigh, recentHigh) : Math.min(zoneLow, recentLow);
+  const inZone = price >= zoneLow && price <= zoneHigh;
+  const chased = direction === "LONG" ? price > trigger + currentAtr * 0.7 : price < trigger - currentAtr * 0.7;
+  const status = inZone ? "ENTRY_ZONE" : chased ? "NO_CHASE" : "WAIT_TRIGGER";
+  const fvgText = fvg4h
+    ? `4시간 FVG ${round(fvg4h.low, 2)}–${round(fvg4h.high, 2)}`
+    : "가까운 4시간 FVG 없음";
+  const confirmations = direction === "LONG" ? [
+    "일봉과 4시간봉 상승 구조 유지",
+    `1시간봉이 ${round(trigger, 2)} 위에서 종가 마감`,
+    "돌파 후 1시간 재테스트에서 저점 상승 확인",
+    `4시간 RSI 과열 여부 확인 (현재 ${frames.fourHour.rsi})`,
+  ] : [
+    "일봉과 4시간봉 하락 구조 유지",
+    `1시간봉이 ${round(trigger, 2)} 아래에서 종가 마감`,
+    "이탈 후 1시간 재테스트에서 고점 하락 확인",
+    `4시간 RSI 과매도 여부 확인 (현재 ${frames.fourHour.rsi})`,
+  ];
+  return {
+    mode: "SWING",
+    direction,
+    score,
+    status,
+    holdingPeriod: "2~14일",
+    entry: round(entry, 2),
+    zone: { low: round(zoneLow, 2), high: round(zoneHigh, 2) },
+    trigger: round(trigger, 2),
+    triggerLabel: "1시간봉 확정 트리거",
+    stop: round(stop, 2),
+    targets: [
+      { label: "1차", price: round(target1, 2), rr: round(Math.abs(target1 - entry) / risk, 2), action: "40% 청산 · 손절가를 진입가로 이동" },
+      { label: "2차", price: round(target2, 2), rr: 2.5, action: "30% 청산 · 4시간 EMA20 추적" },
+      { label: "3차", price: round(target3, 2), rr: 4, action: "잔여 30% · 일봉 추세 종료까지 보유" },
+    ],
+    riskDistance: round(risk, 2),
+    riskPercent: round(risk / entry * 100, 3),
+    invalidation: direction === "LONG"
+      ? `4시간봉이 ${round(stop, 2)} 아래에서 종가 마감하면 스윙 시나리오 폐기`
+      : `4시간봉이 ${round(stop, 2)} 위에서 종가 마감하면 스윙 시나리오 폐기`,
+    noChase: direction === "LONG"
+      ? `${round(trigger + currentAtr * 0.7, 2)} 이상에서는 신규 스윙 추격 매수 금지`
+      : `${round(trigger - currentAtr * 0.7, 2)} 이하에서는 신규 스윙 추격 매도 금지`,
+    basis: [fvgText, `4시간 EMA20 ${frames.fourHour.ema20}`, `일봉 EMA20 ${frames.day.ema20}`, `4시간 구조 레벨 ${round(structure, 2)}`],
+    confirmations,
+    funding: round(funding, 4),
+  };
+}
+
 function checklistFor(direction, frames, extras, plan) {
   if (direction === "WAIT") return [
     { label: "4시간·1시간 방향 정렬", pass: frames.fourHour.direction !== "WAIT" && frames.fourHour.direction === frames.oneHour.direction },
@@ -330,6 +439,19 @@ function checklistFor(direction, frames, extras, plan) {
     { label: "5분 거래량 1.2배 이상", pass: extras.volume.ratio >= 1.2 },
     { label: "RSI 과열 아님", pass: direction === "LONG" ? frames.fiveMinute.rsi < 72 : frames.fiveMinute.rsi > 28 },
     { label: "펀딩 과열 아님", pass: direction === "LONG" ? extras.funding < 0.06 : extras.funding > -0.06 },
+    { label: "추격 진입 구간 아님", pass: plan.status !== "NO_CHASE" },
+  ];
+}
+
+function swingChecklistFor(direction, frames, extras, plan) {
+  const targetDirection = direction === "WAIT" ? plan.direction : direction;
+  return [
+    { label: "주봉이 반대 방향이 아님", pass: frames.week.direction === "WAIT" || frames.week.direction === targetDirection },
+    { label: "일봉 방향 일치", pass: frames.day.direction === targetDirection },
+    { label: "4시간 구조 일치", pass: frames.fourHour.direction === targetDirection },
+    { label: "1시간 진입 방향 확인", pass: frames.oneHour.direction === targetDirection },
+    { label: "4시간 RSI 과열 아님", pass: targetDirection === "LONG" ? frames.fourHour.rsi < 75 : frames.fourHour.rsi > 25 },
+    { label: "펀딩 과열 아님", pass: targetDirection === "LONG" ? extras.funding < 0.08 : extras.funding > -0.08 },
     { label: "추격 진입 구간 아님", pass: plan.status !== "NO_CHASE" },
   ];
 }
@@ -365,10 +487,13 @@ async function loadBitcoinAnalysis() {
     fiveMinute: timeframeSnapshot(candles5, 0.00022),
   };
   const levels = nearestMarketLevels(candles15, price);
+  const swingLevels = nearestMarketLevels(candles4h, price);
   const fvg5Long = findFvg(candles5, "LONG", price);
   const fvg5Short = findFvg(candles5, "SHORT", price);
   const fvg15Long = findFvg(candles15, "LONG", price);
   const fvg15Short = findFvg(candles15, "SHORT", price);
+  const fvg4hLong = findFvg(candles4h, "LONG", price);
+  const fvg4hShort = findFvg(candles4h, "SHORT", price);
   const sweep = findSweep(candles5) || findSweep(candles15);
   const volume = volumeSnapshot(candles5);
   const orderBook = orderBookSnapshot(orderBookRaw);
@@ -376,6 +501,8 @@ async function loadBitcoinAnalysis() {
   const funding = finite(ticker.funding_rate) * 100;
   const longScore = directionScore("LONG", frames, { sweep, fvg5: fvg5Long, fvg15: fvg15Long, volume, orderBook, funding });
   const shortScore = directionScore("SHORT", frames, { sweep, fvg5: fvg5Short, fvg15: fvg15Short, volume, orderBook, funding });
+  const swingLongScore = swingDirectionScore("LONG", frames, { fvg4h: fvg4hLong, funding });
+  const swingShortScore = swingDirectionScore("SHORT", frames, { fvg4h: fvg4hShort, funding });
   const direction = Math.max(longScore, shortScore) >= 62 && Math.abs(longScore - shortScore) >= 8
     ? longScore > shortScore ? "LONG" : "SHORT"
     : "WAIT";
@@ -385,6 +512,15 @@ async function loadBitcoinAnalysis() {
   const primaryPlan = direction === "LONG" ? longPlan : direction === "SHORT" ? shortPlan : longScore >= shortScore ? longPlan : shortPlan;
   const checklist = checklistFor(direction, frames, { volume, funding }, primaryPlan);
   const passed = checklist.filter((item) => item.pass).length;
+  const swingDirection = Math.max(swingLongScore, swingShortScore) >= 58 && Math.abs(swingLongScore - swingShortScore) >= 7
+    ? swingLongScore > swingShortScore ? "LONG" : "SHORT"
+    : "WAIT";
+  const swingContext = { price, frames, levels: swingLevels, candles4h, candles1h, funding };
+  const swingLongPlan = buildSwingTradePlan("LONG", { ...swingContext, fvg4h: fvg4hLong }, swingLongScore);
+  const swingShortPlan = buildSwingTradePlan("SHORT", { ...swingContext, fvg4h: fvg4hShort }, swingShortScore);
+  const primarySwingPlan = swingDirection === "LONG" ? swingLongPlan : swingDirection === "SHORT" ? swingShortPlan : swingLongScore >= swingShortScore ? swingLongPlan : swingShortPlan;
+  const swingChecklist = swingChecklistFor(swingDirection, frames, { funding }, primarySwingPlan);
+  const swingPassed = swingChecklist.filter((item) => item.pass).length;
   const status = direction === "WAIT"
     ? "상위 시간대와 실행 시간대가 충분히 정렬되지 않아 대기"
     : primaryPlan.status === "ENTRY_ZONE"
@@ -392,6 +528,13 @@ async function loadBitcoinAnalysis() {
       : primaryPlan.status === "NO_CHASE"
         ? `${direction} 방향 우세지만 추격 금지 구간`
         : `${direction} 우세 · 5분 트리거 대기`;
+  const swingStatus = swingDirection === "WAIT"
+    ? "주봉·일봉·4시간봉 정렬이 부족해 스윙 대기"
+    : primarySwingPlan.status === "ENTRY_ZONE"
+      ? `${swingDirection} 스윙 진입 구간 · 1시간봉 확인 필요`
+      : primarySwingPlan.status === "NO_CHASE"
+        ? `${swingDirection} 스윙 우세지만 추격 금지 구간`
+        : `${swingDirection} 스윙 우세 · 1시간 트리거 대기`;
   return {
     market: "coin",
     asset: "BTC/USDT",
@@ -420,6 +563,12 @@ async function loadBitcoinAnalysis() {
         long: fvg15Long ? { low: round(fvg15Long.low, 2), high: round(fvg15Long.high, 2) } : null,
         short: fvg15Short ? { low: round(fvg15Short.low, 2), high: round(fvg15Short.high, 2) } : null,
       },
+      swingSupport: swingLevels.support,
+      swingResistance: swingLevels.resistance,
+      fvg4h: {
+        long: fvg4hLong ? { low: round(fvg4hLong.low, 2), high: round(fvg4hLong.high, 2) } : null,
+        short: fvg4hShort ? { low: round(fvg4hShort.low, 2), high: round(fvg4hShort.high, 2) } : null,
+      },
       orderBook,
       volume5m: volume,
     },
@@ -428,8 +577,38 @@ async function loadBitcoinAnalysis() {
     checklist,
     checklistScore: { passed, total: checklist.length },
     executionRule: "진입가는 지정가 후보입니다. 반드시 5분봉 종가 확정과 재테스트를 확인한 뒤 진입하며, 신호 발생 전 시장가 진입은 차단합니다.",
+    strategies: {
+      shortTerm: {
+        label: "단기",
+        timeframe: "15분 구조 · 5분 실행",
+        holdingPeriod: "수분~1일",
+        direction,
+        status,
+        scores: { long: longScore, short: shortScore },
+        plans: { long: longPlan, short: shortPlan },
+        primaryPlan: primaryPlan.direction,
+        checklist,
+        checklistScore: { passed, total: checklist.length },
+        executionRule: "5분봉 종가 확정과 재테스트 전에는 시장가 진입을 보류합니다.",
+      },
+      swing: {
+        label: "스윙",
+        timeframe: "일봉·4시간 구조 · 1시간 실행",
+        holdingPeriod: "2~14일",
+        direction: swingDirection,
+        status: swingStatus,
+        scores: { long: swingLongScore, short: swingShortScore },
+        plans: { long: swingLongPlan, short: swingShortPlan },
+        primaryPlan: primarySwingPlan.direction,
+        checklist: swingChecklist,
+        checklistScore: { passed: swingPassed, total: swingChecklist.length },
+        executionRule: "일봉·4시간 구조가 유지되고 1시간봉 확정과 재테스트가 확인될 때만 진입합니다.",
+      },
+    },
   };
 }
+
+export { buildSwingTradePlan, swingDirectionScore, swingChecklistFor };
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });

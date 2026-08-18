@@ -4,17 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#070b10" />
-  <title>Tooja — 비트코인 전문 트레이딩</title>
+  <title>Tooja — 트레이딩</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/bitcoin.css" />
+  <link rel="stylesheet" href="/bitcoin-polish.css" />
 </head>
 <body>
   <main>
     <header class="topbar">
-      <div><span class="live-dot"></span><span>BTC Professional Desk</span><time id="bitcoinClock"></time></div>
+      <div><span class="live-dot"></span><span>BTC Trading Desk</span><time id="bitcoinClock"></time></div>
       <nav class="app-tabs" aria-label="주요 메뉴">
         <a href="/#positions">포지션</a>
-        <a href="/bitcoin.html" class="active">비트코인 트레이딩</a>
+        <a href="/bitcoin.html" class="active">트레이딩</a>
         <a href="/#stock-recommendations">주식 추천</a>
         <a href="/signals.html">실시간 시그널</a>
       </nav>
@@ -24,18 +25,14 @@
     <div class="content bitcoin-view">
       <section class="hero bitcoin-hero">
         <div>
-          <p class="eyebrow">BTC/USDT · MULTI-TIMEFRAME EXECUTION</p>
-          <h1>비트코인 전문 트레이딩 데스크</h1>
-          <p>1주·1일·4시간·1시간으로 방향을 정하고, 15분 구조와 5분봉 트리거로 진입을 검증합니다.</p>
+          <p class="eyebrow">BTC/USDT · DECISION &amp; EXECUTION</p>
+          <h1>BTC 트레이딩 플랜</h1>
+          <p>단기와 스윙을 분리해 현재 방향, 진입 조건, 손절과 목표가를 한 화면에서 판단합니다.</p>
         </div>
         <div class="btc-market-badge"><span>₿</span><div><small>Gate.io 무기한 선물</small><strong id="btcMarketStatus">데이터 연결 중</strong></div></div>
       </section>
 
-      <section id="bitcoinLoading" class="bitcoin-loading" aria-live="polite">
-        <div></div><div></div><div></div>
-      </section>
-
-      <div id="bitcoinDashboard" hidden>
+      <div id="bitcoinDashboard">
         <section class="btc-summary-grid">
           <article class="panel btc-price-card">
             <small>현재 마크 가격</small>
@@ -43,7 +40,7 @@
             <div><span id="btcChange">—</span><span id="btcUpdated">—</span></div>
           </article>
           <article class="panel btc-verdict-card">
-            <div class="btc-verdict-head"><small>현재 결론</small><span id="btcVerdictBadge">대기</span></div>
+            <div class="btc-verdict-head"><small><b id="btcStrategyName">단기</b> 현재 결론</small><span id="btcVerdictBadge">대기</span></div>
             <strong id="btcStatus">분석 중</strong>
             <p id="btcExecutionRule">—</p>
           </article>
@@ -54,20 +51,33 @@
           </article>
         </section>
 
+        <section class="btc-strategy-overview" aria-label="트레이딩 전략 선택">
+          <button class="active" type="button" data-strategy="shortTerm">
+            <span class="btc-strategy-title"><small>SHORT-TERM</small><strong>단기 트레이딩</strong><em id="btcShortTermBadge">분석 중</em></span>
+            <b id="btcShortTermStatus">15분 구조 · 5분 실행</b>
+            <span id="btcShortTermMeta">보유 수분~1일 · 데이터 연결 중</span>
+          </button>
+          <button type="button" data-strategy="swing">
+            <span class="btc-strategy-title"><small>SWING</small><strong>스윙 트레이딩</strong><em id="btcSwingBadge">분석 중</em></span>
+            <b id="btcSwingStatus">일봉·4시간 구조 · 1시간 실행</b>
+            <span id="btcSwingMeta">보유 2~14일 · 데이터 연결 중</span>
+          </button>
+        </section>
+
         <section class="panel btc-timeframe-panel">
-          <div class="btc-section-head"><div><p class="eyebrow">TOP-DOWN BIAS</p><h2>다중 시간대 방향</h2></div><span id="btcCandleTime">최근 5분봉 —</span></div>
+          <div class="btc-section-head"><div><p class="eyebrow">TOP-DOWN BIAS</p><h2>시간대별 방향 정렬</h2><p id="btcTimeframeGuide">단기는 1시간·15분·5분 정렬을 우선 확인합니다.</p></div><span id="btcCandleTime">최근 5분봉 —</span></div>
           <div id="btcTimeframes" class="btc-timeframes"></div>
         </section>
 
         <section class="btc-main-grid">
           <div>
-            <div class="btc-section-head plan-heading"><div><p class="eyebrow">EXECUTION PLAN</p><h2>상세 진입 시나리오</h2></div><div class="btc-plan-switch"><button class="active" data-plan="long">LONG 계획</button><button data-plan="short">SHORT 계획</button></div></div>
+            <div class="btc-section-head plan-heading"><div><p class="eyebrow" id="btcPlanEyebrow">SHORT-TERM EXECUTION</p><h2 id="btcPlanHeading">단기 진입 시나리오</h2><p id="btcPlanContext">15분 구조와 5분봉 확정 기준</p></div><div class="btc-plan-switch"><button class="active" data-plan="long">LONG</button><button data-plan="short">SHORT</button></div></div>
             <section id="btcPlanCard" class="panel btc-plan-card"></section>
           </div>
 
           <aside class="btc-side-stack">
             <section class="panel btc-checklist-panel">
-              <div class="btc-section-head"><div><h2>진입 체크리스트</h2><p>실행 전 필수 확인</p></div><strong id="btcChecklistScore">—</strong></div>
+              <div class="btc-section-head"><div><h2 id="btcChecklistHeading">단기 진입 체크</h2><p id="btcChecklistGuide">실행 전 필수 확인</p></div><strong id="btcChecklistScore">—</strong></div>
               <div id="btcChecklist" class="btc-checklist"></div>
             </section>
             <section class="panel btc-risk-panel">
@@ -83,11 +93,11 @@
         </section>
 
         <section class="btc-structure-grid">
-          <article class="panel"><div class="btc-section-head"><div><h2>핵심 가격 레벨</h2><p>15분 구조 기준</p></div></div><div id="btcLevels" class="btc-levels"></div></article>
-          <article class="panel"><div class="btc-section-head"><div><h2>실행 데이터</h2><p>5분봉·호가·펀딩</p></div></div><div id="btcMicroData" class="btc-micro-data"></div></article>
+          <article class="panel"><div class="btc-section-head"><div><h2>핵심 가격 레벨</h2><p id="btcLevelsGuide">15분 구조 기준</p></div></div><div id="btcLevels" class="btc-levels"></div></article>
+          <article class="panel"><div class="btc-section-head"><div><h2>판단 데이터</h2><p id="btcDataGuide">5분봉·호가·펀딩</p></div></div><div id="btcMicroData" class="btc-micro-data"></div></article>
         </section>
 
-        <section class="panel btc-disclaimer"><strong>실행 원칙</strong><p>표시된 진입 구간은 자동 주문 신호가 아니라 조건부 시나리오입니다. 5분봉 종가 확정, 재테스트, 손절 거리와 계좌 위험을 모두 확인한 뒤 실행해야 하며 추격 진입은 금지합니다.</p></section>
+        <section class="panel btc-disclaimer"><strong>실행 원칙</strong><p id="btcExecutionPrinciple">표시된 진입 구간은 자동 주문 신호가 아니라 조건부 시나리오입니다. 5분봉 종가 확정, 재테스트, 손절 거리와 계좌 위험을 모두 확인한 뒤 실행해야 하며 추격 진입은 금지합니다.</p></section>
       </div>
     </div>
   </main>

@@ -1,0 +1,62 @@
+/* Decision-first trading workspace */
+.bitcoin-view{padding-top:34px}
+.bitcoin-hero{margin-bottom:24px}
+.bitcoin-hero h1{letter-spacing:-.045em}
+.bitcoin-hero>div:first-child>p:last-child{max-width:720px;color:#8d99a6}
+.btc-summary-grid{margin-bottom:12px}
+.btc-summary-grid>.panel{background:linear-gradient(145deg,#0e171f,#0b1218);box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.btc-verdict-card{background:linear-gradient(145deg,#10201c,#0b1415)!important}
+.btc-verdict-card[data-tone="short"]{border-color:#5b3340;background:linear-gradient(145deg,#21141a,#0d1217)!important}
+.btc-verdict-card[data-tone="wait"]{border-color:#34414b;background:linear-gradient(145deg,#121a21,#0b1218)!important}
+.btc-verdict-head small b{margin-right:5px;color:#d8fff4;font-size:10px}
+.btc-verdict-card>strong{line-height:1.35}
+.btc-score-card>div span{transition:border-color .18s ease,background .18s ease}
+.btc-score-card>div span.winner{border-color:#3a5a50;background:#101d1a}
+.btc-strategy-overview{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 16px}
+.btc-strategy-overview>button{display:grid;gap:9px;padding:17px 18px;border:1px solid #24313b;border-radius:9px;background:#0b1218;color:#e8edf1;text-align:left;cursor:pointer;transition:transform .16s ease,border-color .16s ease,background .16s ease}
+.btc-strategy-overview>button:hover{transform:translateY(-1px);border-color:#3b4c58}
+.btc-strategy-overview>button:focus-visible{outline:2px solid #29dcb0;outline-offset:2px}
+.btc-strategy-overview>button.active{border-color:#2c695b;background:linear-gradient(145deg,#10221e,#0b1517);box-shadow:inset 3px 0 0 #25dcae}
+.btc-strategy-title{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px}
+.btc-strategy-title small{color:#37e7ba;font:800 8px monospace;letter-spacing:.14em}
+.btc-strategy-title strong{font-size:15px}
+.btc-strategy-title em{padding:5px 8px;border-radius:6px;background:#202a35;color:#9ba6b0;font-size:8px;font-style:normal;font-weight:900}
+.btc-strategy-title em.long{background:#12342e;color:var(--green)}
+.btc-strategy-title em.short{background:#3a1c25;color:var(--red)}
+.btc-strategy-overview>button>b{overflow:hidden;color:#dce4e9;font-size:12px;line-height:1.45;text-overflow:ellipsis;white-space:nowrap}
+.btc-strategy-overview>button>span:last-child{color:#6f7c88;font-size:9px}
+.btc-timeframe-panel{margin-bottom:20px}
+.btc-timeframe{position:relative;transition:opacity .18s ease,border-color .18s ease,transform .18s ease}
+.btc-timeframe.focus{border-color:#345347;background:#0d1718;transform:translateY(-1px)}
+.btc-timeframe.focus:before{position:absolute;top:8px;right:8px;width:5px;height:5px;border-radius:50%;background:#2ce4b5;content:""}
+.btc-timeframe.short.focus:before{background:var(--red)}
+.btc-timeframe.context{opacity:.62}
+.btc-timeframe.context:hover{opacity:1}
+.btc-main-grid{gap:14px}
+.plan-heading{margin-bottom:12px;padding:0 2px}
+.plan-heading .eyebrow{color:#35e7b8}
+.btc-plan-switch{padding:3px;border:1px solid #26333d;border-radius:8px;background:#091015}
+.btc-plan-switch button{min-width:76px;border:0;background:transparent}
+.btc-plan-switch button.active{background:#193128;color:#e7fff8;box-shadow:inset 0 0 0 1px #386154}
+.btc-plan-switch button[data-plan="short"].active{background:#321922;color:#ffdce4;box-shadow:inset 0 0 0 1px #68404c}
+.btc-plan-card{background:linear-gradient(155deg,#0d171d,#0a1116)}
+.btc-plan-labels{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+.btc-plan-labels>span:last-child{padding:5px 8px;border-radius:6px;background:#18222b;color:#8996a1;font-size:8px;font-weight:800}
+.btc-plan-hero h3{margin-top:2px}
+.btc-plan-level-grid article,.btc-targets article{box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.btc-checklist-panel,.btc-risk-panel,.btc-structure-grid>.panel{background:linear-gradient(145deg,#0d161d,#0a1116)}
+.btc-checklist>div{min-height:42px}
+.btc-checklist-panel .btc-section-head>strong{border:1px solid #234b3f}
+.btc-risk-result>div:nth-child(2) dd{color:#f1f5f7}
+.btc-disclaimer{background:#15130f}
+@media(max-width:760px){
+  .bitcoin-view{padding-top:24px}
+  .bitcoin-hero{margin-bottom:18px}
+  .btc-strategy-overview{grid-template-columns:1fr}
+  .btc-strategy-overview>button{padding:15px}
+  .btc-strategy-overview>button>b{white-space:normal}
+  .btc-timeframe.context{opacity:.72}
+  .btc-plan-hero>strong{font-size:18px}
+  .btc-summary-grid>.panel{padding:18px}
+  .btc-verdict-card>strong{font-size:18px}
+}
