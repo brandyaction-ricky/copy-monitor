@@ -1,0 +1,50 @@
+.btc-execution-strip {
+  display: grid;
+  grid-template-columns: .8fr 1fr 1.45fr 1fr 1fr;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: rgba(36, 224, 173, .3);
+  background: linear-gradient(105deg, rgba(36, 224, 173, .08), rgba(15, 25, 33, .92) 42%);
+}
+
+.btc-execution-strip article {
+  min-width: 0;
+  padding: 18px 20px;
+  border-right: 1px solid var(--line);
+}
+
+.btc-execution-strip article:last-child { border-right: 0; }
+.btc-execution-strip small { display: block; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
+.btc-execution-strip strong { display: block; overflow: hidden; color: var(--text); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.btc-execution-strip strong.long,
+.btc-execution-strip strong.positive { color: var(--green); }
+.btc-execution-strip strong.short,
+.btc-execution-strip strong.negative { color: var(--red); }
+.btc-execution-strip strong.wait { color: var(--warning); }
+
+.btc-main-grid { grid-template-columns: minmax(0, 1.65fr) minmax(280px, .55fr); }
+.btc-side-stack { grid-template-columns: 1fr; align-self: start; }
+.btc-checklist-panel { position: sticky; top: 76px; }
+
+.btc-market-data-panel { margin-top: 24px; }
+.btc-market-data-panel .btc-micro-data { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.btc-market-data-panel .btc-micro-data .wide { grid-column: span 2; }
+
+@media (max-width: 900px) {
+  .btc-execution-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .btc-execution-strip article { border-bottom: 1px solid var(--line); }
+  .btc-execution-strip article:nth-child(2n) { border-right: 0; }
+  .btc-execution-strip article:nth-last-child(-n + 2) { border-bottom: 0; }
+  .btc-execution-strip article:last-child { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+  .btc-main-grid { grid-template-columns: 1fr; }
+  .btc-checklist-panel { position: static; }
+  .btc-market-data-panel .btc-micro-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .btc-execution-strip { margin-top: 14px; }
+  .btc-execution-strip article { padding: 14px; }
+  .btc-execution-strip strong { font-size: 13px; }
+  .btc-market-data-panel .btc-micro-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

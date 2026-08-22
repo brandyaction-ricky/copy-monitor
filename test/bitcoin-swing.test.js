@@ -85,3 +85,4 @@ test("페이지는 트레이딩 명칭과 두 전략을 표시하고 빈 3칸 �
   assert.doesNotMatch(html, /id="bitcoinLoading"/);
 });
 
+

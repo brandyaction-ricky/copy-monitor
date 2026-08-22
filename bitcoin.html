@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/bitcoin.css" />
   <link rel="stylesheet" href="/bitcoin-polish.css" />
   <link rel="stylesheet" href="/bitwhale-theme.css" />
+  <link rel="stylesheet" href="/trading-execution.css" />
 </head>
 <body>
   <main>
@@ -17,8 +18,6 @@
       <nav class="app-tabs" aria-label="주요 메뉴">
         <a href="/#positions">포지션</a>
         <a href="/bitcoin.html" class="active">트레이딩</a>
-        <a href="/#stock-recommendations">주식 추천</a>
-        <a href="/signals.html">실시간 시그널</a>
       </nav>
       <div class="top-actions"><span class="badge">BTC LIVE</span><button id="bitcoinRefresh" type="button">↻ <span>새로고침</span></button></div>
     </header>
@@ -65,6 +64,14 @@
           </button>
         </section>
 
+        <section class="panel btc-execution-strip" aria-label="현재 실행 요약">
+          <article><small>선택 전략</small><strong id="btcFlowStrategy">단기</strong></article>
+          <article><small>현재 판단</small><strong id="btcFlowDirection">분석 중</strong></article>
+          <article><small>진입 구간</small><strong id="btcFlowEntry">—</strong></article>
+          <article><small>손절가</small><strong id="btcFlowStop">—</strong></article>
+          <article><small>1차 익절</small><strong id="btcFlowTarget">—</strong></article>
+        </section>
+
         <section class="panel btc-timeframe-panel">
           <div class="btc-section-head"><div><p class="eyebrow">TOP-DOWN BIAS</p><h2>시간대별 방향 정렬</h2><p id="btcTimeframeGuide">단기는 1시간·15분·5분 정렬을 우선 확인합니다.</p></div><span id="btcCandleTime">최근 5분봉 —</span></div>
           <div id="btcTimeframes" class="btc-timeframes"></div>
@@ -81,21 +88,12 @@
               <div class="btc-section-head"><div><h2 id="btcChecklistHeading">단기 진입 체크</h2><p id="btcChecklistGuide">실행 전 필수 확인</p></div><strong id="btcChecklistScore">—</strong></div>
               <div id="btcChecklist" class="btc-checklist"></div>
             </section>
-            <section class="panel btc-risk-panel">
-              <div class="btc-section-head"><div><h2>리스크 계산기</h2><p>손절 기준 포지션 크기</p></div></div>
-              <div class="btc-risk-inputs">
-                <label><span>계좌 자산</span><input id="btcAccountSize" type="number" min="100" step="100" value="10000" /></label>
-                <label><span>1회 위험</span><input id="btcRiskPercent" type="number" min="0.1" max="5" step="0.1" value="0.5" /><em>%</em></label>
-                <label><span>레버리지</span><input id="btcLeverage" type="number" min="1" max="100" step="1" value="5" /><em>×</em></label>
-              </div>
-              <dl id="btcRiskResult" class="btc-risk-result"></dl>
-            </section>
           </aside>
         </section>
 
-        <section class="btc-structure-grid">
-          <article class="panel"><div class="btc-section-head"><div><h2>핵심 가격 레벨</h2><p id="btcLevelsGuide">15분 구조 기준</p></div></div><div id="btcLevels" class="btc-levels"></div></article>
-          <article class="panel"><div class="btc-section-head"><div><h2>판단 데이터</h2><p id="btcDataGuide">5분봉·호가·펀딩</p></div></div><div id="btcMicroData" class="btc-micro-data"></div></article>
+        <section class="panel btc-market-data-panel">
+          <div class="btc-section-head"><div><p class="eyebrow">EXECUTION DATA</p><h2>실행 확인 데이터</h2><p id="btcDataGuide">5분봉·호가·펀딩</p></div></div>
+          <div id="btcMicroData" class="btc-micro-data"></div>
         </section>
 
         <section class="panel btc-disclaimer"><strong>실행 원칙</strong><p id="btcExecutionPrinciple">표시된 진입 구간은 자동 주문 신호가 아니라 조건부 시나리오입니다. 5분봉 종가 확정, 재테스트, 손절 거리와 계좌 위험을 모두 확인한 뒤 실행해야 하며 추격 진입은 금지합니다.</p></section>

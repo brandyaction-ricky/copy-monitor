@@ -97,13 +97,13 @@ function renderPlan() {
       <article><small>지정가 중심</small><strong>${money(plan.entry)}</strong></article>
       <article><small>${escapeBtc(plan.triggerLabel || "5분봉 확정 트리거")}</small><strong>${money(plan.trigger)}</strong></article>
       <article><small>손절가</small><strong class="negative">${money(plan.stop)}</strong></article>
-      <article><small>가격 리스크</small><strong>${money(plan.riskDistance)}</strong></article>
+      <article><small>1차 익절</small><strong>${money(plan.targets[0]?.price)}</strong></article>
     </div>
     <section class="btc-confirm-section"><h4>진입 확인 순서</h4><ol>${plan.confirmations.map((item) => `<li>${escapeBtc(item)}</li>`).join("")}</ol></section>
     <section class="btc-plan-basis"><h4>진입 구간 산출 근거</h4><div>${plan.basis.map((item) => `<span>${escapeBtc(item)}</span>`).join("")}</div></section>
     <section class="btc-targets"><h4>분할 익절 계획</h4><div>${targetRows}</div></section>
     <div class="btc-invalidation"><div><small>시나리오 무효화</small><p>${escapeBtc(plan.invalidation)}</p></div><div><small>추격 금지 기준</small><p>${escapeBtc(plan.noChase)}</p></div></div>`;
-  calculateRisk();
+  renderExecutionStrip();
 }
 
 function renderChecklist() {
@@ -113,35 +113,23 @@ function renderChecklist() {
   $b("btcChecklist").innerHTML = rows.map((item) => `<div class="${item.pass ? "pass" : "fail"}"><i>${item.pass ? "✓" : "—"}</i><span>${escapeBtc(item.label)}</span></div>`).join("");
 }
 
-function calculateRisk() {
-  if (!bitcoinData) return;
-  const plan = currentStrategy().plans[selectedPlan];
-  const account = Math.max(0, Number($b("btcAccountSize").value || 0));
-  const riskPercent = Math.max(0, Number($b("btcRiskPercent").value || 0));
-  const leverage = Math.max(1, Number($b("btcLeverage").value || 1));
-  const riskAmount = account * riskPercent / 100;
-  const entry = Number(plan.entry);
-  const stopDistancePercent = Math.abs(entry - Number(plan.stop)) / entry;
-  const notional = stopDistancePercent ? riskAmount / stopDistancePercent : 0;
-  const quantity = entry ? notional / entry : 0;
-  const margin = notional / leverage;
-  const excessive = margin > account;
-  $b("btcRiskResult").innerHTML = `
-    <div><dt>허용 손실</dt><dd>${money(riskAmount)}</dd></div>
-    <div><dt>권장 포지션 규모</dt><dd>${money(notional)}</dd></div>
-    <div><dt>BTC 수량</dt><dd>${numberText(quantity, 5)} BTC</dd></div>
-    <div><dt>필요 증거금</dt><dd class="${excessive ? "negative" : ""}">${money(margin)}</dd></div>
-    <div><dt>손절 거리</dt><dd>${numberText(plan.riskPercent, 3)}%</dd></div>
-    ${excessive ? `<p>현재 설정에서는 필요 증거금이 계좌 자산을 초과합니다. 위험률 또는 포지션 규모를 낮추세요.</p>` : ""}`;
+function renderExecutionStrip() {
+  const strategy = currentStrategy();
+  const plan = strategy.plans[selectedPlan];
+  const tone = verdictTone(strategy.direction);
+  const direction = strategy.direction === "WAIT" ? "관망" : `${strategy.direction} · ${statusLabel(plan.status)}`;
+  $b("btcFlowStrategy").textContent = `${strategy.label} · ${plan.direction}`;
+  $b("btcFlowDirection").textContent = direction;
+  $b("btcFlowDirection").className = tone;
+  $b("btcFlowEntry").textContent = `${money(plan.zone.low)} – ${money(plan.zone.high)}`;
+  $b("btcFlowStop").textContent = money(plan.stop);
+  $b("btcFlowStop").className = "negative";
+  $b("btcFlowTarget").textContent = money(plan.targets[0]?.price);
+  $b("btcFlowTarget").className = "positive";
 }
 
-function renderStructure() {
+function renderMarketData() {
   const structure = bitcoinData.marketStructure;
-  const supportRows = selectedStrategy === "swing" ? structure.swingSupport || [] : structure.support || [];
-  const resistanceRows = selectedStrategy === "swing" ? structure.swingResistance || [] : structure.resistance || [];
-  const supports = supportRows.slice(0, 3).map((item, index) => `<div><span>S${index + 1}</span><strong>${money(item.price)}</strong><small>${item.touches}회 반응</small></div>`).join("");
-  const resistance = resistanceRows.slice(0, 3).map((item, index) => `<div><span>R${index + 1}</span><strong>${money(item.price)}</strong><small>${item.touches}회 반응</small></div>`).join("");
-  $b("btcLevels").innerHTML = `<section><h3>저항</h3>${resistance || "<p>가까운 저항 미확인</p>"}</section><section><h3>지지</h3>${supports || "<p>가까운 지지 미확인</p>"}</section>`;
   if (selectedStrategy === "swing") {
     const frame4h = bitcoinData.timeframes.fourHour;
     const frame1d = bitcoinData.timeframes.day;
@@ -190,7 +178,6 @@ function renderSelectedStrategy() {
   $b("btcPlanContext").textContent = selectedStrategy === "swing" ? "일봉·4시간 구조와 1시간봉 확정 기준" : "15분 구조와 5분봉 확정 기준";
   $b("btcChecklistHeading").textContent = selectedStrategy === "swing" ? "스윙 진입 체크" : "단기 진입 체크";
   $b("btcChecklistGuide").textContent = selectedStrategy === "swing" ? "보유 전 상위 시간대 필수 확인" : "실행 전 하위 시간대 필수 확인";
-  $b("btcLevelsGuide").textContent = selectedStrategy === "swing" ? "4시간 구조 기준" : "15분 구조 기준";
   $b("btcDataGuide").textContent = selectedStrategy === "swing" ? "4시간·일봉·펀딩" : "5분봉·호가·펀딩";
   $b("btcExecutionPrinciple").textContent = selectedStrategy === "swing"
     ? "스윙 진입 구간은 조건부 계획입니다. 일봉·4시간 구조를 확인하고 1시간봉 종가 확정과 재테스트 뒤 실행하며, 4시간봉 무효화 가격을 손절 기준으로 사용합니다."
@@ -199,7 +186,7 @@ function renderSelectedStrategy() {
   renderTimeframes();
   renderPlan();
   renderChecklist();
-  renderStructure();
+  renderMarketData();
 }
 
 function renderBitcoin() {
@@ -245,7 +232,7 @@ document.querySelectorAll("[data-plan]").forEach((button) => button.addEventList
     item.setAttribute("aria-pressed", String(active));
   });
   renderPlan();
-  renderStructure();
+  renderMarketData();
 }));
 document.querySelectorAll("[data-strategy]").forEach((button) => button.addEventListener("click", () => {
   if (!bitcoinData || !strategies()[button.dataset.strategy]) return;
@@ -258,10 +245,11 @@ document.querySelectorAll("[data-strategy]").forEach((button) => button.addEvent
   });
   renderSelectedStrategy();
 }));
-["btcAccountSize", "btcRiskPercent", "btcLeverage"].forEach((id) => $b(id).addEventListener("input", calculateRisk));
 $b("bitcoinRefresh").addEventListener("click", () => loadBitcoin(true));
 setInterval(() => {
   $b("bitcoinClock").textContent = new Date().toLocaleString("ko-KR", { hour12:false, timeZone:"Asia/Seoul" }) + " KST";
 }, 1000);
 loadBitcoin();
 setInterval(() => loadBitcoin(false), 30_000);
+
+

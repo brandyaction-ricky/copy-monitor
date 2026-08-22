@@ -29,8 +29,6 @@ const renderPerformancePeriod = () => {
 };
 let tradeRange = { from: kstDateKey(Date.now() - DAY_MS * 3), to: kstDateKey() };
 let analysisMonth = "";
-let coinFilter = "all";
-let recommendations = { coin: null, stock: null };
 let dashboardLoaded = false;
 const $ = (id) => document.getElementById(id);
 const getEffectiveTotal = (account = dashboard.account) => {
@@ -50,151 +48,10 @@ const toast = (message) => {
   clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => $("toast").classList.remove("show"), 3000);
 };
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
-const compactUsd = (value) => {
-  const amount = Number(value || 0);
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: Math.abs(amount) >= 1_000_000 ? "compact" : "standard", maximumFractionDigits: Math.abs(amount) >= 1_000 ? 1 : 2 }).format(amount);
-};
-const priceText = (value) => {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "—";
-  const digits = amount >= 1000 ? 2 : amount >= 1 ? 4 : 6;
-  return `$${new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(amount)}`;
-};
-
-function recommendationSkeleton(target, count = 4) {
-  $(target).innerHTML = Array.from({ length: count }, () => `<article class="recommendation-card loading-card"><div></div><div></div><div></div></article>`).join("");
-}
-
-const directionText = (direction) => direction === "LONG" ? "상승" : direction === "SHORT" ? "하락" : "혼조";
-const directionTone = (direction) => direction === "LONG" ? "long" : direction === "SHORT" ? "short" : "wait";
-
-function scenarioMarkup(scenario, label) {
-  if (!scenario) return "";
-  const direction = scenario.candidateDirection;
-  const tone = directionTone(direction);
-  const status = scenario.actionable ? `${direction} 진입 후보` : direction === "WAIT" ? "조건 불충족" : `${direction} 셋업 대기`;
-  return `<section class="strategy-card ${tone}">
-    <div class="strategy-head"><div><small>${label}</small><strong>${status}</strong></div><b>${number(scenario.score, 0)}점</b></div>
-    ${direction !== "WAIT" ? `<div class="strategy-levels"><div><small>진입</small><strong>${scenario.zone ? `${priceText(scenario.zone.low)}–${priceText(scenario.zone.high)}` : priceText(scenario.entry)}</strong></div><div><small>손절</small><strong>${priceText(scenario.stop)}</strong></div><div><small>1차 익절</small><strong>${priceText(scenario.target1)}</strong></div><div><small>R:R</small><strong>${number(scenario.rr, 2)}</strong></div></div>` : ""}
-    <p>${escapeHtml(scenario.trigger)}</p>
-  </section>`;
-}
-
-function renderCoinRecommendations() {
-  const payload = recommendations.coin;
-  if (!payload) return;
-  const items = (payload.candidates || []).filter((item) => coinFilter === "all" || (coinFilter === "actionable" ? ["LONG", "SHORT"].includes(item.verdict) : item.verdict === "WAIT"));
-  $("coinScanMeta").textContent = `${new Date(payload.updatedAt).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST · ${payload.source} · 1주/4시간/1시간/15분`;
-  $("coinRecommendationGrid").innerHTML = items.length ? items.map((item) => {
-    if (item.error) return `<article class="recommendation-card error-card"><div class="recommendation-head"><div><small>${escapeHtml(item.symbol)}</small><h3>데이터 조회 실패</h3></div><span class="verdict wait">확인 필요</span></div><p>${escapeHtml(item.error)}</p></article>`;
-    const positionLabel = item.positionType === "SWING" ? "스윙" : item.positionType === "SHORT_TERM" ? "단기" : item.positionType === "BOTH" ? "스윙·단기" : "";
-    const verdict = item.verdict === "LONG" ? `${positionLabel} LONG` : item.verdict === "SHORT" ? `${positionLabel} SHORT` : "관망";
-    const tone = item.verdict === "LONG" ? "long" : item.verdict === "SHORT" ? "short" : "wait";
-    const frames = item.timeframes || {};
-    return `<article class="recommendation-card ${tone}">
-      <div class="recommendation-head"><div><small>${escapeHtml(item.contract)} · 24H ${item.change24h >= 0 ? "+" : ""}${number(item.change24h)}%</small><h3>${escapeHtml(item.symbol)}</h3></div><span class="verdict ${tone}">${verdict}</span></div>
-      <div class="recommendation-price"><strong>${priceText(item.price)}</strong><span>적합도 <b>${number(item.score, 0)}</b>/100</span></div>
-      <div class="timeframe-strip"><div><small>1W 큰 방향</small><strong class="${directionTone(frames.week)}">${directionText(frames.week)}</strong></div><i>›</i><div><small>4H 스윙</small><strong class="${directionTone(frames.fourHour)}">${directionText(frames.fourHour)}</strong></div><i>›</i><div><small>1H 단기</small><strong class="${directionTone(frames.oneHour)}">${directionText(frames.oneHour)}</strong></div><i>›</i><div><small>15m 진입</small><strong class="${directionTone(frames.fifteenMinute)}">${directionText(frames.fifteenMinute)}</strong></div></div>
-      <div class="signal-strip"><span>RSI ${number(item.rsi, 1)}</span><span>펀딩 ${item.fundingRate >= 0 ? "+" : ""}${number(item.fundingRate, 4)}%</span><span>거래량 ${compactUsd(item.volume24h)}</span></div>
-      <div class="strategy-grid">${scenarioMarkup(item.scenarios?.swing, "스윙 포지션")}${scenarioMarkup(item.scenarios?.shortTerm, "단기 포지션")}</div>
-      <ul class="reason-list">${(item.reasons || []).slice(0, 4).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
-      <p class="candle-time">최근 사용 봉: ${new Date(item.candleClosedAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST</p>
-    </article>`;
-  }).join("") : `<article class="panel empty-recommendations">현재 필터에 해당하는 후보가 없습니다.</article>`;
-}
-
-const kstDateTime = (value, includeTime = true) => {
-  if (!value) return "미확인";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "미확인";
-  return date.toLocaleString("ko-KR", {
-    month: "2-digit", day: "2-digit",
-    ...(includeTime ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}),
-    timeZone: "Asia/Seoul",
-  });
-};
-const optionalNumber = (value, digits = 1, suffix = "") => value == null ? "—" : `${number(value, digits)}${suffix}`;
-const earningsMetric = (actual, estimated, suffix = "") => {
-  if (actual == null && estimated == null) return "미확인";
-  const actualText = actual == null ? "—" : `${number(actual, 2)}${suffix}`;
-  const estimateText = estimated == null ? "—" : `${number(estimated, 2)}${suffix}`;
-  return `${actualText} / 예상 ${estimateText}`;
-};
-
-function renderMacroContext(context = {}) {
-  const indicators = context.indicators || {};
-  const treasury = context.treasury || {};
-  const next = context.nextHighImpact;
-  const consensusReady = context.providers?.consensus === "live";
-  $("stockDataStatus").textContent = consensusReady ? "실적·매크로 LIVE" : "공식 매크로 LIVE";
-  $("macroContext").innerHTML = `<div class="macro-context-head">
-    <div><small>다음 중요 이벤트</small><strong>${next ? escapeHtml(next.name) : "예정 이벤트 없음"}</strong><span>${next ? `${kstDateTime(next.date)} KST${next.estimate == null ? "" : ` · 예상 ${number(next.estimate, 2)}${escapeHtml(next.unit || "")}`}` : "향후 일정을 확인했습니다."}</span></div>
-    <b class="data-state ${consensusReady ? "live" : "partial"}">${consensusReady ? "공식값 + 컨센서스" : "공식값 연결 · 컨센서스 대기"}</b>
-  </div>
-  <div class="macro-metrics">
-    <article><small>CPI 전년비</small><strong>${optionalNumber(indicators.cpiYoY, 2, "%")}</strong><span>${escapeHtml(indicators.cpiReference || "BLS")}</span></article>
-    <article><small>실업률</small><strong>${optionalNumber(indicators.unemploymentRate, 1, "%")}</strong><span>${escapeHtml(indicators.unemploymentReference || "BLS")}</span></article>
-    <article><small>비농업 고용</small><strong>${indicators.payrollChange == null ? "—" : `${indicators.payrollChange >= 0 ? "+" : ""}${number(indicators.payrollChange, 0)}K`}</strong><span>${escapeHtml(indicators.payrollReference || "BLS")}</span></article>
-    <article><small>미 국채 2년</small><strong>${optionalNumber(treasury.twoYear, 2, "%")}</strong><span>${treasury.twoYearDailyChange == null ? "일간 —" : `일간 ${treasury.twoYearDailyChange >= 0 ? "+" : ""}${number(treasury.twoYearDailyChange * 100, 0)}bp`}</span></article>
-    <article><small>미 국채 10년</small><strong>${optionalNumber(treasury.tenYear, 2, "%")}</strong><span>${treasury.tenYearDailyChange == null ? "일간 —" : `일간 ${treasury.tenYearDailyChange >= 0 ? "+" : ""}${number(treasury.tenYearDailyChange * 100, 0)}bp`}</span></article>
-    <article><small>10Y−2Y</small><strong>${optionalNumber(treasury.curve10y2y, 2, "%p")}</strong><span>${treasury.date ? kstDateTime(treasury.date, false) : "Treasury"}</span></article>
-  </div>
-  <div class="macro-source-line"><span>공식 출처: BLS · U.S. Treasury · Federal Reserve</span><span>갱신 ${kstDateTime(context.updatedAt)} KST</span></div>`;
-}
-
-function renderStockRecommendations() {
-  const payload = recommendations.stock;
-  if (!payload) return;
-  renderMacroContext(payload.context || {});
-  const consensusReady = payload.context?.providers?.consensus === "live";
-  $("stockScanMeta").textContent = `${new Date(payload.updatedAt).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })} KST · 실가격 + 공식 매크로${consensusReady ? " + 실적 컨센서스" : ""}`;
-  $("stockRecommendationGrid").innerHTML = (payload.candidates || []).map((item) => {
-    if (item.error) return `<article class="recommendation-card error-card"><div class="recommendation-head"><div><small>${escapeHtml(item.sector)}</small><h3>${escapeHtml(item.symbol)}</h3></div><span class="verdict wait">조회 실패</span></div><p>${escapeHtml(item.error)}</p></article>`;
-    const label = item.verdict === "WATCH" ? "진입 관찰" : item.verdict === "AVOID" ? "회피" : item.decisionBlocked ? "판단 보류" : "중립";
-    const tone = item.verdict === "WATCH" ? "long" : item.verdict === "AVOID" ? "short" : "wait";
-    const nextEarnings = item.earnings?.next;
-    const latestEarnings = item.earnings?.latest;
-    return `<article class="recommendation-card ${tone}">
-      <div class="recommendation-head"><div><small>${escapeHtml(item.name)} · ${escapeHtml(item.sector)}</small><h3>${escapeHtml(item.symbol)}</h3></div><div class="verdict-stack"><span class="verdict ${tone}">${label}</span><small>${item.dataStatus === "FULL" ? "실적·매크로 확인" : "공식 매크로만 확인"}</small></div></div>
-      <div class="recommendation-price"><strong>${priceText(item.price)}</strong><span class="${item.change >= 0 ? "positive" : "negative"}">${item.change >= 0 ? "+" : ""}${number(item.change)}%</span></div>
-      <div class="signal-strip"><span>점수 ${number(item.score, 0)}</span><span>RSI ${number(item.rsi, 1)}</span><span>거래량 ${number(item.volumeRatio, 2)}×</span><span>변동폭 ${number(item.volatility, 2)}%</span></div>
-      <div class="earnings-grid">
-        <section><small>다음 실적</small><strong>${nextEarnings ? `${kstDateTime(nextEarnings.date)} KST` : item.symbol === "QQQ" ? "해당 없음" : "일정 미확인"}</strong><span>${nextEarnings ? `EPS 예상 ${nextEarnings.epsEstimated == null ? "—" : number(nextEarnings.epsEstimated, 2)} · 매출 ${nextEarnings.revenueEstimated == null ? "—" : compactUsd(nextEarnings.revenueEstimated)}` : ""}</span></section>
-        <section><small>최근 발표</small><strong>${latestEarnings ? kstDateTime(latestEarnings.date, false) : item.symbol === "QQQ" ? "해당 없음" : "발표값 미확인"}</strong><span>${latestEarnings ? `EPS ${earningsMetric(latestEarnings.epsActual, latestEarnings.epsEstimated)} · 서프라이즈 ${optionalNumber(latestEarnings.epsSurprise, 1, "%")}` : ""}</span></section>
-      </div>
-      <ul class="reason-list">${(item.reasons || []).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
-      <div class="trigger-box warning"><small>이벤트 필터</small><p>${escapeHtml(item.eventStatus)}</p></div>
-      <p class="candle-time">가격 기준 ${item.priceTime ? `${kstDateTime(item.priceTime)} KST` : "미확인"} · 이벤트/금리 ${kstDateTime(payload.context?.updatedAt)} KST</p>
-    </article>`;
-  }).join("");
-}
-
-async function loadRecommendations(market, showToast = false) {
-  const target = market === "coin" ? "coinRecommendationGrid" : "stockRecommendationGrid";
-  recommendationSkeleton(target);
-  try {
-    const response = await fetch(`/api/recommendations?market=${market}`, { cache: "no-store" });
-    if (!response.ok) throw new Error((await response.json()).error || "추천 데이터 조회 실패");
-    recommendations[market] = await response.json();
-    if (market === "coin") renderCoinRecommendations();
-    else renderStockRecommendations();
-    if (showToast) toast(`${market === "coin" ? "코인" : "주식"} 스캔을 갱신했습니다.`);
-  } catch (error) {
-    $(target).innerHTML = `<article class="panel recommendation-error"><strong>실시간 데이터를 불러오지 못했습니다.</strong><p>${escapeHtml(error.message)}</p><button class="retry-button" data-retry-market="${market}">다시 시도</button></article>`;
-  }
-}
-
 function resolveView() {
   const hash = window.location.hash;
-  const view = hash === "#coin-recommendations" ? "coin" : hash === "#stock-recommendations" ? "stock" : "dashboard";
-  document.querySelectorAll("[data-app-view]").forEach((element) => { element.hidden = element.dataset.appView !== view; });
-  document.querySelectorAll("[data-view]").forEach((element) => element.classList.toggle("active", element.dataset.view === view));
-  if (view === "coin") $("modeBadge").textContent = "LIVE MARKET";
-  else if (view === "stock") $("modeBadge").textContent = "STOCK BETA";
-  else $("modeBadge").textContent = dashboardLoaded ? "LIVE" : "연결 확인 중";
-  if (view === "coin" && !recommendations.coin) loadRecommendations("coin");
-  if (view === "stock" && !recommendations.stock) loadRecommendations("stock");
-  if (view === "dashboard" && !dashboardLoaded) loadDashboard();
+  $("modeBadge").textContent = dashboardLoaded ? "LIVE" : "연결 확인 중";
+  if (!dashboardLoaded) loadDashboard();
   if (hash === "#positions") requestAnimationFrame(() => $("positions")?.scrollIntoView({ block: "start" }));
 }
 
@@ -412,12 +269,7 @@ document.querySelectorAll("[data-filter]").forEach((button) => button.addEventLi
   document.querySelectorAll("[data-filter]").forEach(b=>b.classList.remove("active"));
   button.classList.add("active"); filter = button.dataset.filter; renderPositions();
 }));
-$("refreshButton").addEventListener("click",()=>{
-  const hash = window.location.hash;
-  if (hash === "#coin-recommendations") loadRecommendations("coin", true);
-  else if (hash === "#stock-recommendations") loadRecommendations("stock", true);
-  else loadDashboard(true);
-});
+$("refreshButton").addEventListener("click", () => loadDashboard(true));
 $("loadMoreTrades").addEventListener("click",()=>{
   visibleTradeCount=Math.min(5000,visibleTradeCount+10);
   renderTrades();
@@ -449,12 +301,7 @@ document.querySelectorAll("[data-trade-filter]").forEach((button)=>button.addEve
   visibleTradeCount=10;
   renderTrades();
 }));
-document.querySelectorAll("[data-coin-filter]").forEach((button)=>button.addEventListener("click",()=>{
-  document.querySelectorAll("[data-coin-filter]").forEach((item)=>item.classList.remove("active"));
-  button.classList.add("active");
-  coinFilter=button.dataset.coinFilter;
-  renderCoinRecommendations();
-}));
+
 document.addEventListener("click", (event) => {
   const monthButton = event.target.closest("[data-analysis-month]");
   if (monthButton) {
@@ -462,8 +309,6 @@ document.addEventListener("click", (event) => {
     renderAssetAnalysis();
     return;
   }
-  const retry = event.target.closest("[data-retry-market]");
-  if (retry) loadRecommendations(retry.dataset.retryMarket, true);
 });
 window.addEventListener("hashchange", resolveView);
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("ko-KR",{hour12:false,timeZone:"Asia/Seoul"})+" KST"; },1000);
@@ -473,8 +318,8 @@ $("tradeDateEnd").max = kstDateKey();
 $("tradeDateStart").value = tradeRange.from;
 $("tradeDateEnd").value = tradeRange.to;
 resolveView();
-setInterval(()=>{
-  if (!["#coin-recommendations", "#stock-recommendations"].includes(window.location.hash)) loadDashboard(false);
-},30_000);
+setInterval(() => loadDashboard(false), 30_000);
 renderPerformancePeriod();
 setInterval(renderPerformancePeriod, 60_000);
+
+
