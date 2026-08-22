@@ -61,10 +61,11 @@ test("스윙 계획은 별도 보유기간과 4시간봉 무효화 기준을 제
   const plan = buildSwingTradePlan("LONG", context, 84);
   assert.equal(plan.mode, "SWING");
   assert.equal(plan.holdingPeriod, "2~14일");
-  assert.equal(plan.triggerLabel, "1시간봉 확정 트리거");
+  assert.equal(plan.triggerLabel, "1시간봉 BOS/CHoCH 확정");
   assert.match(plan.invalidation, /4시간봉/);
   assert.ok(plan.stop < plan.entry);
   assert.equal(plan.targets.length, 3);
+  assert.ok(plan.targets[0].rr >= 1.5);
   assert.ok(plan.targets[2].price > plan.targets[1].price);
 });
 
@@ -72,7 +73,7 @@ test("스윙 체크리스트는 상위 시간대와 추격 여부를 분리 확�
   const context = fixtures("LONG");
   const plan = buildSwingTradePlan("LONG", context, 84);
   const checklist = swingChecklistFor("LONG", context.frames, { funding: context.funding }, plan);
-  assert.equal(checklist.length, 7);
+  assert.ok(checklist.length >= 10);
   assert.ok(checklist.some((item) => item.label.includes("주봉")));
   assert.ok(checklist.some((item) => item.label.includes("추격")));
 });
@@ -84,5 +85,4 @@ test("페이지는 트레이딩 명칭과 두 전략을 표시하고 빈 3칸 �
   assert.match(html, /data-strategy="swing"/);
   assert.doesNotMatch(html, /id="bitcoinLoading"/);
 });
-
 

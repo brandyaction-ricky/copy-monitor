@@ -23,6 +23,20 @@
 .btc-execution-strip strong.negative { color: var(--red); }
 .btc-execution-strip strong.wait { color: var(--warning); }
 
+.btc-score-card > small em {
+  margin-left: 6px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 8px;
+  font-style: normal;
+}
+
+.btc-plan-hero p { max-width: 680px; }
+.btc-plan-basis span { line-height: 1.4; }
+.btc-market-data-panel .btc-micro-data strong { line-height: 1.45; white-space: normal; }
+
 .btc-main-grid { grid-template-columns: minmax(0, 1.65fr) minmax(280px, .55fr); }
 .btc-side-stack { grid-template-columns: 1fr; align-self: start; }
 .btc-checklist-panel { position: sticky; top: 76px; }

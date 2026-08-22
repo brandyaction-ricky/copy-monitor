@@ -3,7 +3,14 @@ const money = (value) => value == null || !Number.isFinite(Number(value)) ? "—
 const numberText = (value, digits = 2) => value == null || !Number.isFinite(Number(value)) ? "—" : Number(value).toLocaleString("en-US", { maximumFractionDigits: digits });
 const escapeBtc = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[character]);
 const directionLabel = (value) => value === "LONG" ? "상승" : value === "SHORT" ? "하락" : "혼조";
-const statusLabel = (value) => value === "ENTRY_ZONE" ? "진입 구간" : value === "NO_CHASE" ? "추격 금지" : "트리거 대기";
+const statusLabel = (value) => ({
+  ENTRY_READY: "실행 후보",
+  WAIT_STRUCTURE: "구조 변화 대기",
+  WAIT_RETEST: "첫 리테스트 대기",
+  NO_CHASE: "추격 금지",
+  RISK_TOO_WIDE: "손절 폭 과다",
+  INVALID: "셋업 무효",
+}[value] || "조건 확인 중");
 let bitcoinData = null;
 let selectedPlan = "long";
 let selectedStrategy = "shortTerm";
@@ -71,7 +78,7 @@ function renderStrategyOverview() {
     badge.textContent = strategy.direction === "WAIT" ? "관망" : strategy.direction;
     badge.className = verdictTone(strategy.direction);
     $b(`${prefix}Status`).textContent = strategy.status;
-    $b(`${prefix}Meta`).textContent = `보유 ${strategy.holdingPeriod} · LONG ${strategy.scores.long} / SHORT ${strategy.scores.short}`;
+    $b(`${prefix}Meta`).textContent = `보유 ${strategy.holdingPeriod} · 셋업 품질 ${strategy.setupQuality ?? 0}/100 · 승률 아님`;
   };
   bind("shortTerm", "btcShortTerm");
   bind("swing", "btcSwing");
@@ -90,14 +97,14 @@ function renderPlan() {
   $b("btcPlanCard").className = `panel btc-plan-card ${tone}`;
   $b("btcPlanCard").innerHTML = `
     <div class="btc-plan-hero">
-      <div><div class="btc-plan-labels"><span class="btc-plan-direction ${tone}">${plan.direction}</span><span>${escapeBtc(strategy.label)} · 보유 ${escapeBtc(plan.holdingPeriod || strategy.holdingPeriod)}</span></div><h3>${statusLabel(plan.status)}</h3><p>방향 점수 ${plan.score}/100 · 손절 거리 ${numberText(plan.riskPercent, 3)}%</p></div>
+      <div><div class="btc-plan-labels"><span class="btc-plan-direction ${tone}">${plan.direction}</span><span>${escapeBtc(strategy.label)} · 보유 ${escapeBtc(plan.holdingPeriod || strategy.holdingPeriod)}</span></div><h3>${statusLabel(plan.status)}</h3><p>방향 ${plan.score}/100 · ICT 품질 ${plan.setupQuality ?? 0}/100 · 컨플루언스 ${plan.confluence?.count ?? 0}/${plan.confluence?.total ?? 0} · 승률 아님</p></div>
       <strong>${money(plan.zone.low)}<i>—</i>${money(plan.zone.high)}</strong>
     </div>
     <div class="btc-plan-level-grid">
       <article><small>지정가 중심</small><strong>${money(plan.entry)}</strong></article>
       <article><small>${escapeBtc(plan.triggerLabel || "5분봉 확정 트리거")}</small><strong>${money(plan.trigger)}</strong></article>
-      <article><small>손절가</small><strong class="negative">${money(plan.stop)}</strong></article>
-      <article><small>1차 익절</small><strong>${money(plan.targets[0]?.price)}</strong></article>
+      <article><small>하드 스탑</small><strong class="negative">${money(plan.hardStop ?? plan.stop)}</strong></article>
+      <article><small>1차 익절 · R:R ${numberText(plan.targets[0]?.rr, 2)}</small><strong>${money(plan.targets[0]?.price)}</strong></article>
     </div>
     <section class="btc-confirm-section"><h4>진입 확인 순서</h4><ol>${plan.confirmations.map((item) => `<li>${escapeBtc(item)}</li>`).join("")}</ol></section>
     <section class="btc-plan-basis"><h4>진입 구간 산출 근거</h4><div>${plan.basis.map((item) => `<span>${escapeBtc(item)}</span>`).join("")}</div></section>
@@ -130,31 +137,50 @@ function renderExecutionStrip() {
 
 function renderMarketData() {
   const structure = bitcoinData.marketStructure;
+  const session = structure.session || {};
+  const sessionText = { ASIA: "아시아", LONDON: "런던", NEW_YORK: "뉴욕", OFF_HOURS: "비주요 시간" }[session.session] || "N/A";
   if (selectedStrategy === "swing") {
     const frame4h = bitcoinData.timeframes.fourHour;
     const frame1d = bitcoinData.timeframes.day;
     const fvg = structure.fvg4h?.[selectedPlan];
+    const orderBlock = structure.orderBlocks?.swing?.[selectedPlan];
+    const range = structure.swingRange;
+    const structureEvent = structure.structure1h?.latestEvent;
+    const channel = structure.channels?.swing;
     $b("btcMicroData").innerHTML = `
-      <div><span>4시간 EMA20</span><strong>${money(frame4h.ema20)}</strong></div>
-      <div><span>4시간 EMA50</span><strong>${money(frame4h.ema50)}</strong></div>
-      <div><span>일봉 EMA20</span><strong>${money(frame1d.ema20)}</strong></div>
-      <div><span>4시간 ATR</span><strong>${money(frame4h.atr)}</strong></div>
+      <div><span>HTF 바이어스</span><strong>${escapeBtc(structure.swingBias || "WAIT")}</strong></div>
+      <div><span>4시간 레인지 위치</span><strong>${escapeBtc(range?.zone || "N/A")} · ${numberText(range?.positionPercent, 1)}%</strong></div>
+      <div><span>1시간 구조</span><strong>${structureEvent ? `${escapeBtc(structureEvent.type)} ${escapeBtc(structureEvent.direction)}` : "확정 구조 없음"}</strong></div>
+      <div><span>PWH / PWL</span><strong>${money(session.previousWeekHigh)} / ${money(session.previousWeekLow)}</strong></div>
       <div><span>4시간 RSI</span><strong>${numberText(frame4h.rsi, 1)}</strong></div>
       <div><span>펀딩</span><strong>${bitcoinData.fundingRate >= 0 ? "+" : ""}${numberText(bitcoinData.fundingRate, 4)}%</strong></div>
-      <div class="wide"><span>${selectedPlan.toUpperCase()} 4H FVG</span><strong>${fvg ? `${money(fvg.low)}–${money(fvg.high)}` : "없음"}</strong></div>`;
+      <div><span>${selectedPlan.toUpperCase()} 4H OB</span><strong>${orderBlock ? `${money(orderBlock.low)}–${money(orderBlock.high)} · ${escapeBtc(orderBlock.state)}` : "N/A"}</strong></div>
+      <div><span>${selectedPlan.toUpperCase()} 4H FVG</span><strong>${fvg ? `${money(fvg.low)}–${money(fvg.high)} · ${escapeBtc(fvg.state)}` : "N/A"}</strong></div>
+      <div><span>4시간 채널</span><strong>${channel?.valid ? `${escapeBtc(channel.direction)} · 상하단 3회+ 터치` : "약함/N/A"}</strong></div>
+      <div><span>SMT</span><strong>N/A · 비교 자산 미연결</strong></div>`;
     return;
   }
-  const sweep = structure.sweep ? `${structure.sweep.direction === "LONG" ? "저점" : "고점"} 유동성 스윕 · ${money(structure.sweep.level)}` : "최근 유동성 스윕 없음";
+  const sweep = structure.sweep ? `${structure.sweep.label || (structure.sweep.direction === "LONG" ? "하단" : "상단")} 스윕 · ${money(structure.sweep.level)} · ${structure.sweep.confirmed ? "반전 확인" : "후속 확인 대기"}` : "최근 유동성 스윕 없음";
   const fvg5Long = structure.fvg5.long ? `${money(structure.fvg5.long.low)}–${money(structure.fvg5.long.high)}` : "없음";
   const fvg5Short = structure.fvg5.short ? `${money(structure.fvg5.short.low)}–${money(structure.fvg5.short.high)}` : "없음";
+  const range = structure.executionRange;
+  const orderBlock = structure.orderBlocks?.shortTerm?.[selectedPlan];
+  const structureEvent = structure.structure5?.latestEvent;
+  const channel = structure.channels?.shortTerm;
   $b("btcMicroData").innerHTML = `
-    <div><span>24H VWAP</span><strong>${money(structure.vwap24h)}</strong></div>
-    <div><span>5분 거래량</span><strong>${numberText(structure.volume5m.ratio, 2)}×</strong></div>
-    <div><span>호가 불균형</span><strong class="${structure.orderBook.imbalance >= 0 ? "positive" : "negative"}">${structure.orderBook.imbalance >= 0 ? "+" : ""}${numberText(structure.orderBook.imbalance, 1)}%</strong></div>
-    <div><span>펀딩</span><strong>${bitcoinData.fundingRate >= 0 ? "+" : ""}${numberText(bitcoinData.fundingRate, 4)}%</strong></div>
-    <div><span>LONG 5m FVG</span><strong>${fvg5Long}</strong></div>
-    <div><span>SHORT 5m FVG</span><strong>${fvg5Short}</strong></div>
-    <div class="wide"><span>유동성</span><strong>${escapeBtc(sweep)}</strong></div>`;
+    <div><span>세션 · HTF</span><strong>${sessionText} · ${escapeBtc(structure.shortTermBias || "WAIT")}</strong></div>
+    <div><span>PDH / PDL</span><strong>${money(session.previousDayHigh)} / ${money(session.previousDayLow)}</strong></div>
+    <div><span>Asia High / Low</span><strong>${money(session.asiaHigh)} / ${money(session.asiaLow)}</strong></div>
+    <div><span>Daily Open</span><strong>${money(session.dailyOpen)}</strong></div>
+    <div><span>15분 레인지 위치</span><strong>${escapeBtc(range?.zone || "N/A")} · ${numberText(range?.positionPercent, 1)}%</strong></div>
+    <div><span>5분 구조</span><strong>${structureEvent ? `${escapeBtc(structureEvent.type)} ${escapeBtc(structureEvent.direction)}` : "확정 구조 없음"}</strong></div>
+    <div><span>${selectedPlan.toUpperCase()} 5m OB</span><strong>${orderBlock ? `${money(orderBlock.low)}–${money(orderBlock.high)} · ${escapeBtc(orderBlock.state)}` : "N/A"}</strong></div>
+    <div><span>${selectedPlan.toUpperCase()} 5m FVG</span><strong>${selectedPlan === "long" ? fvg5Long : fvg5Short}</strong></div>
+    <div><span>5분 거래량 / 펀딩</span><strong>${numberText(structure.volume5m.ratio, 2)}× · ${bitcoinData.fundingRate >= 0 ? "+" : ""}${numberText(bitcoinData.fundingRate, 4)}%</strong></div>
+    <div><span>호가 불균형 · 보조</span><strong class="${structure.orderBook.imbalance >= 0 ? "positive" : "negative"}">${structure.orderBook.imbalance >= 0 ? "+" : ""}${numberText(structure.orderBook.imbalance, 1)}%</strong></div>
+    <div><span>15분 채널</span><strong>${channel?.valid ? `${escapeBtc(channel.direction)} · 상하단 3회+ 터치` : "약함/N/A"}</strong></div>
+    <div><span>SMT</span><strong>N/A · 비교 자산 미연결</strong></div>
+    <div class="wide"><span>유동성 스윕</span><strong>${escapeBtc(sweep)}</strong></div>`;
 }
 
 function renderSelectedStrategy() {
@@ -180,8 +206,8 @@ function renderSelectedStrategy() {
   $b("btcChecklistGuide").textContent = selectedStrategy === "swing" ? "보유 전 상위 시간대 필수 확인" : "실행 전 하위 시간대 필수 확인";
   $b("btcDataGuide").textContent = selectedStrategy === "swing" ? "4시간·일봉·펀딩" : "5분봉·호가·펀딩";
   $b("btcExecutionPrinciple").textContent = selectedStrategy === "swing"
-    ? "스윙 진입 구간은 조건부 계획입니다. 일봉·4시간 구조를 확인하고 1시간봉 종가 확정과 재테스트 뒤 실행하며, 4시간봉 무효화 가격을 손절 기준으로 사용합니다."
-    : "단기 진입 구간은 조건부 계획입니다. 5분봉 종가 확정, 재테스트, 손절 거리와 계좌 위험을 모두 확인한 뒤 실행하며 추격 진입은 금지합니다.";
+    ? "스윙 진입 구간은 조건부 계획입니다. 일봉·4시간 구조, 4시간 OB/FVG, 1시간 BOS/CHoCH와 첫 리테스트 뒤 실행하며 하드 스탑은 즉시 적용합니다. 셋업 점수는 승률이 아니며 아직 백테스트로 보정되지 않았습니다."
+    : "단기 진입 구간은 조건부 계획입니다. HTF 정렬, 유동성 스윕, 5분봉 몸통 BOS/CHoCH, 신선한 OB/FVG 첫 리테스트와 최소 1.5R을 모두 확인합니다. 셋업 점수는 승률이 아니며 아직 백테스트로 보정되지 않았습니다.";
   renderStrategyOverview();
   renderTimeframes();
   renderPlan();
@@ -251,5 +277,3 @@ setInterval(() => {
 }, 1000);
 loadBitcoin();
 setInterval(() => loadBitcoin(false), 30_000);
-
-
