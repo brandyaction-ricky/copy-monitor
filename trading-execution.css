@@ -61,6 +61,12 @@
 .btc-chart-title-row>span { font: 800 10px monospace; }
 .btc-chart-title-row>span.positive { color: var(--green); }
 .btc-chart-title-row>span.negative { color: var(--red); }
+.btc-symbol-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.btc-symbol-search { display: flex; align-items: center; gap: 6px; }
+.btc-symbol-search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.btc-symbol-search input { width: 150px; min-height: 34px; padding: 0 10px; border: 1px solid #2a3740; border-radius: 6px; outline: 0; background: #090f13; color: #e7eff2; font: 800 10px monospace; }
+.btc-symbol-search input:focus { border-color: #43d7b2; box-shadow: 0 0 0 2px rgba(67, 215, 178, .12); }
+.btc-symbol-search button { min-height: 34px; padding: 0 12px; border: 1px solid #365c51; border-radius: 6px; background: #17332c; color: #9af0d7; font-size: 9px; font-weight: 900; cursor: pointer; }
 
 .btc-chart-statuses { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .btc-chart-statuses>span {
@@ -122,6 +128,7 @@
 .btc-chart-layers button i,.btc-chart-legend i { width: 8px; height: 8px; border-radius: 2px; background: #68757e; }
 .btc-chart-layers i.liquidity,.btc-chart-legend i.liquidity { background: #ec7a8b; }
 .btc-chart-layers i.structure,.btc-chart-legend i.structure { background: #a581e8; }
+.btc-chart-layers i.ob,.btc-chart-legend i.ob { background: #f5b342; }
 .btc-chart-layers i.fvg,.btc-chart-legend i.fvg { background: #2fd6ad; }
 .btc-chart-layers i.plan,.btc-chart-legend i.plan { background: #54a9ef; }
 
@@ -232,6 +239,9 @@
 .btc-execution-strip strong.blocked { color: #ff8da1; }
 
 @media (max-width: 900px) {
+  .btc-symbol-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .btc-symbol-search { width: 100%; }
+  .btc-symbol-search input { width: 100%; flex: 1; }
   .btc-chart-toolbar { align-items: flex-start; flex-direction: column; }
   .btc-chart-layers { width: 100%; }
   .btc-chart-stage { height: 460px; }

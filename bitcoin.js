@@ -15,9 +15,10 @@ let bitcoinData = null;
 let selectedPlan = "long";
 let selectedStrategy = "shortTerm";
 let selectedChartTimeframe = "5m";
+let selectedContract = "BTC_USDT";
 
 const chartTimeframeLabels = { "5m": "5분봉", "15m": "15분봉", "1h": "1시간봉", "4h": "4시간봉" };
-const chartLayerState = { liquidity: true, structure: true, fvg: true, plan: true };
+const chartLayerState = { liquidity: true, structure: true, ob: true, fvg: true, plan: true };
 const tradingChartRuntime = {
   chart: null,
   candleSeries: null,
@@ -29,6 +30,7 @@ const tradingChartRuntime = {
   resizeObserver: null,
   socket: null,
   socketTimeframe: null,
+  socketContract: null,
   socketGeneration: 0,
   socketReconnectTimer: null,
   socketPingTimer: null,
@@ -399,6 +401,15 @@ function applyChartAnnotations(candles) {
     markers.push(...featureMarkers.filter(Boolean));
   }
 
+  if (overlayAligned && chartLayerState.ob && engine?.orderBlock && !engine.orderBlock.invalidated) {
+    const ob = engine.orderBlock;
+    const obColor = direction === "LONG" ? "rgba(245, 179, 66, .72)" : "rgba(255, 127, 150, .72)";
+    const startTime = availabilityBarTime(ob.time, candles);
+    addBoundedLevelSeries({ price: ob.low, startTime, candles, color: obColor, lineWidth: 1, lineStyle: dotted, title: `OB 하단 · ${ob.state}`, axisLabelVisible: false });
+    addBoundedLevelSeries({ price: ob.high, startTime, candles, color: obColor, lineWidth: 1, lineStyle: dotted, title: `OB 상단 · ${ob.state}`, axisLabelVisible: false });
+    addBoundedLevelSeries({ price: ob.midpoint, startTime, candles, color: obColor, lineWidth: 1, lineStyle: dashed, title: `OB 50% · ${ob.breakType}`, axisLabelVisible: true });
+  }
+
   if (overlayAligned && chartLayerState.fvg && engine?.fvg) {
     const fvg = engine.fvg;
     const zoneColor = direction === "LONG" ? "rgba(47, 214, 173, .65)" : "rgba(240, 92, 112, .65)";
@@ -458,6 +469,7 @@ function disconnectTradingChartSocket() {
   const socket = tradingChartRuntime.socket;
   tradingChartRuntime.socket = null;
   tradingChartRuntime.socketTimeframe = null;
+  tradingChartRuntime.socketContract = null;
   if (socket && socket.readyState < 2) {
     try { socket.close(1000, "timeframe changed"); } catch (_) { /* 종료 중인 소켓은 무시 */ }
   }
@@ -498,7 +510,7 @@ function connectTradingChartSocket() {
     setChartStreamStatus("rest", "REST · 30초 갱신");
     return;
   }
-  if (tradingChartRuntime.socket && tradingChartRuntime.socketTimeframe === selectedChartTimeframe && tradingChartRuntime.socket.readyState < 2) return;
+  if (tradingChartRuntime.socket && tradingChartRuntime.socketTimeframe === selectedChartTimeframe && tradingChartRuntime.socketContract === selectedContract && tradingChartRuntime.socket.readyState < 2) return;
   disconnectTradingChartSocket();
   const timeframe = selectedChartTimeframe;
   const generation = ++tradingChartRuntime.socketGeneration;
@@ -521,9 +533,10 @@ function connectTradingChartSocket() {
     const timeoutToRest = () => closeToRest({ retry: true });
     tradingChartRuntime.socket = socket;
     tradingChartRuntime.socketTimeframe = timeframe;
+    tradingChartRuntime.socketContract = selectedContract;
     socket.addEventListener("open", () => {
       if (generation !== tradingChartRuntime.socketGeneration) return;
-      socket.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: "futures.candlesticks", event: "subscribe", payload: [timeframe, "BTC_USDT"] }));
+      socket.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: "futures.candlesticks", event: "subscribe", payload: [timeframe, selectedContract] }));
       setChartStreamStatus("connecting", "LIVE 구독 확인 중");
       tradingChartRuntime.socketAckTimer = setTimeout(timeoutToRest, 8_000);
       tradingChartRuntime.socketPingTimer = setInterval(() => {
@@ -731,6 +744,10 @@ function renderDecisionEngine() {
 }
 
 function renderPlan() {
+  if (!$b("btcPlanCard")) {
+    renderExecutionStrip();
+    return;
+  }
   const strategy = currentStrategy();
   const plan = strategy.plans[selectedPlan];
   const engine = currentDecisionPlan();
@@ -879,24 +896,9 @@ function renderMarketData() {
 
 function renderSelectedStrategy() {
   const strategy = currentStrategy();
-  const decision = strategy.decision || strategy.direction;
-  const tone = verdictTone(decision);
-  $b("btcStrategyName").textContent = strategy.label;
-  $b("btcVerdictBadge").textContent = decision;
-  $b("btcVerdictBadge").className = tone;
-  $b("btcVerdictBadge").closest(".btc-verdict-card").dataset.tone = tone;
-  $b("btcStatus").textContent = strategy.status;
-  $b("btcExecutionRule").textContent = strategy.executionRule;
-  $b("btcLongScore").textContent = strategy.scores.long;
-  $b("btcShortScore").textContent = strategy.scores.short;
-  $b("btcLongScore").parentElement.classList.toggle("winner", strategy.scores.long > strategy.scores.short);
-  $b("btcShortScore").parentElement.classList.toggle("winner", strategy.scores.short > strategy.scores.long);
   $b("btcTimeframeGuide").textContent = selectedStrategy === "swing"
     ? "스윙은 주봉·일봉·4시간 정렬을 우선하고 1시간봉으로 진입을 확인합니다."
     : "단기는 1시간·15분·5분 정렬을 우선하고 5분봉으로 진입을 확인합니다.";
-  $b("btcPlanEyebrow").textContent = selectedStrategy === "swing" ? "SWING EXECUTION" : "SHORT-TERM EXECUTION";
-  $b("btcPlanHeading").textContent = selectedStrategy === "swing" ? "스윙 진입 시나리오" : "단기 진입 시나리오";
-  $b("btcPlanContext").textContent = selectedStrategy === "swing" ? "일봉·4시간 구조와 1시간봉 확정 기준" : "15분 구조와 5분봉 확정 기준";
   $b("btcChecklistHeading").textContent = selectedStrategy === "swing" ? "스윙 의사결정 단계" : "단기 의사결정 단계";
   $b("btcChecklistGuide").textContent = "PASS 단계만 순서대로 인정";
   $b("btcDataGuide").textContent = selectedStrategy === "swing" ? "4시간·일봉·펀딩" : "5분봉·호가·펀딩";
@@ -913,10 +915,12 @@ function renderSelectedStrategy() {
 }
 
 function renderBitcoin() {
-  $b("btcPrice").textContent = money(bitcoinData.price);
-  $b("btcChange").textContent = `${bitcoinData.change24h >= 0 ? "+" : ""}${numberText(bitcoinData.change24h, 2)}% 24H`;
-  $b("btcChange").className = bitcoinData.change24h >= 0 ? "positive" : "negative";
-  $b("btcUpdated").textContent = `${timeText(bitcoinData.updatedAt)} KST`;
+  selectedContract = bitcoinData.contract || selectedContract;
+  const asset = selectedContract.replace(/_USDT$/, "");
+  $b("tradingHeroSymbol").textContent = `${asset}/USDT · DECISION & EXECUTION`;
+  $b("tradingHeroAsset").textContent = asset;
+  $b("btcChartSymbol").textContent = `GATE.IO · ${selectedContract} PERPETUAL`;
+  $b("btcSymbolInput").value = asset;
   $b("btcMarketStatus").textContent = `${bitcoinData.source} · LIVE`;
   $b("btcCandleTime").textContent = `최근 확정 5분봉 ${timeText(bitcoinData.candleClosedAt)} KST`;
   selectedPlan = currentStrategy().primaryPlan === "SHORT" ? "short" : "long";
@@ -932,15 +936,14 @@ async function loadBitcoin(showToast = false) {
   const button = $b("bitcoinRefresh");
   button.disabled = true;
   try {
-    const response = await fetch("/api/bitcoin", { cache: "no-store" });
-    if (!response.ok) throw new Error((await response.json()).error || "비트코인 분석 조회 실패");
+    const response = await fetch(`/api/bitcoin?symbol=${encodeURIComponent(selectedContract)}`, { cache: "no-store" });
+    if (!response.ok) throw new Error((await response.json()).error || "선물 종목 분석 조회 실패");
     bitcoinData = await response.json();
     renderBitcoin();
-    if (showToast) toast("비트코인 데이터를 갱신했습니다.");
+    if (showToast) toast(`${selectedContract.replace(/_USDT$/, "")} 데이터를 갱신했습니다.`);
   } catch (error) {
     $b("btcMarketStatus").textContent = "연결 오류";
-    $b("btcStatus").textContent = "실시간 분석을 불러오지 못했습니다.";
-    $b("btcExecutionRule").textContent = error.message;
+    $b("btcMarketStatus").textContent = error.message;
     showChartFallback("차트 데이터를 불러오지 못했습니다.", "시장 데이터 연결을 확인한 뒤 새로고침해 주세요.");
     setChartStreamStatus("error", "시장 데이터 연결 오류");
     toast("데이터 연결에 실패했습니다. 새로고침으로 다시 시도해 주세요.");
@@ -948,6 +951,42 @@ async function loadBitcoin(showToast = false) {
     button.disabled = false;
   }
 }
+
+function contractFromSearch(value) {
+  const symbol = String(value || "").trim().toUpperCase().replaceAll("/", "_").replaceAll("-", "_").replace(/\s+/g, "");
+  const contract = symbol.endsWith("_USDT") ? symbol : symbol.endsWith("USDT") ? `${symbol.slice(0, -4)}_USDT` : `${symbol}_USDT`;
+  return /^[A-Z0-9]{2,20}_USDT$/.test(contract) ? contract : null;
+}
+
+async function loadContractOptions() {
+  try {
+    const response = await fetch("/api/contracts", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    $b("btcSymbolOptions").innerHTML = (payload.contracts || []).slice(0, 180)
+      .map((item) => `<option value="${escapeBtc(item.symbol)}">${escapeBtc(item.contract)} · ${money(item.price)}</option>`)
+      .join("");
+  } catch (_) { /* 직접 심볼 입력은 계속 지원 */ }
+}
+
+$b("btcSymbolSearch").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const contract = contractFromSearch($b("btcSymbolInput").value);
+  if (!contract) {
+    toast("Gate.io USDT 선물 심볼을 입력해 주세요. 예: ETH 또는 ETH_USDT");
+    return;
+  }
+  if (contract === selectedContract && bitcoinData) {
+    loadBitcoin(true);
+    return;
+  }
+  selectedContract = contract;
+  disconnectTradingChartSocket();
+  tradingChartRuntime.liveCandles = {};
+  tradingChartRuntime.lastTimeframe = null;
+  $b("btcMarketStatus").textContent = `${contract.replace(/_USDT$/, "")} 분석 연결 중`;
+  await loadBitcoin(true);
+});
 
 document.querySelectorAll("[data-plan]").forEach((button) => button.addEventListener("click", () => {
   selectedPlan = button.dataset.plan;
@@ -1003,6 +1042,7 @@ window.addEventListener("beforeunload", () => {
 setInterval(() => {
   $b("bitcoinClock").textContent = new Date().toLocaleString("ko-KR", { hour12:false, timeZone:"Asia/Seoul" }) + " KST";
 }, 1000);
+loadContractOptions();
 loadBitcoin();
 setInterval(() => {
   if (!document.hidden) loadBitcoin(false);

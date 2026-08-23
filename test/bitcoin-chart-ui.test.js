@@ -38,6 +38,20 @@ test("엔진 오버레이는 해당 실행 시간대에서만 후보 점선과 A
   assert.doesNotMatch(script, /createPriceLine/);
 });
 
+test("차트는 OB 레이어와 Gate USDT 선물 종목 검색을 제공한다", () => {
+  assert.match(html, /data-chart-layer="ob"/);
+  assert.match(html, /id="btcSymbolSearch"/);
+  assert.match(script, /engine\?\.orderBlock/);
+  assert.match(script, /payload: \[timeframe, selectedContract\]/);
+  assert.match(script, /\/api\/bitcoin\?symbol=/);
+});
+
+test("중복된 상단 요약과 상세 진입 시나리오 카드를 제거한다", () => {
+  assert.doesNotMatch(html, /btc-summary-grid/);
+  assert.doesNotMatch(html, /id="btcPlanCard"/);
+  assert.doesNotMatch(html, /단기 진입 시나리오/);
+});
+
 test("마커 원본 봉과 오버레이 가용 봉을 분리해 과거 구간에 소급 표시하지 않는다", () => {
   assert.match(script, /function sourceBarTime[\s\S]*if \(candle\.time >= target\) break/);
   assert.match(script, /function availabilityBarTime[\s\S]*if \(candle\.time >= target\) return candle\.time/);

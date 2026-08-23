@@ -25,32 +25,14 @@
     <div class="content bitcoin-view">
       <section class="hero bitcoin-hero">
         <div>
-          <p class="eyebrow">BTC/USDT · DECISION &amp; EXECUTION</p>
-          <h1>BTC Trading Decision Engine</h1>
-          <p>현재 위치부터 Sweep·CISD·Displacement·MSS·FVG Retrace까지 순서대로 확인하고, 기존 유동성 목표로 최소 2R이 확보될 때만 실행 가격을 엽니다.</p>
+          <p id="tradingHeroSymbol" class="eyebrow">BTC/USDT · DECISION &amp; EXECUTION</p>
+          <h1><span id="tradingHeroAsset">BTC</span> Trading Decision Engine</h1>
+          <p>현재 위치부터 Sweep·CISD·Displacement·MSS·FVG Retrace까지 확인하고, 구조 손절과 기존 유동성 목표로 최소 1.2R을 평가합니다.</p>
         </div>
         <div class="btc-market-badge"><span>₿</span><div><small>Gate.io 무기한 선물</small><strong id="btcMarketStatus">데이터 연결 중</strong></div></div>
       </section>
 
       <div id="bitcoinDashboard">
-        <section class="btc-summary-grid">
-          <article class="panel btc-price-card">
-            <small>현재 마크 가격</small>
-            <strong id="btcPrice">—</strong>
-            <div><span id="btcChange">—</span><span id="btcUpdated">—</span></div>
-          </article>
-          <article class="panel btc-verdict-card">
-            <div class="btc-verdict-head"><small><b id="btcStrategyName">단기</b> 현재 결론</small><span id="btcVerdictBadge">대기</span></div>
-            <strong id="btcStatus">분석 중</strong>
-            <p id="btcExecutionRule">—</p>
-          </article>
-          <article class="panel btc-score-card">
-            <small>보조 방향 점수 <em>V1 · 승률 아님</em></small>
-            <div><span>LONG <b id="btcLongScore">—</b></span><span>SHORT <b id="btcShortScore">—</b></span></div>
-            <p>참고용 방향 점수입니다. 실제 실행 여부는 아래 v2 Hard Filter가 결정합니다.</p>
-          </article>
-        </section>
-
         <section class="btc-strategy-overview" aria-label="트레이딩 전략 선택">
           <button class="active" type="button" data-strategy="shortTerm">
             <span class="btc-strategy-title"><small>SHORT-TERM</small><strong>단기 트레이딩</strong><em id="btcShortTermBadge">분석 중</em></span>
@@ -67,7 +49,15 @@
         <section class="panel btc-chart-panel" aria-label="BTC 실시간 분석 차트">
           <div class="btc-chart-head">
             <div>
-              <p class="eyebrow">GATE.IO · BTC_USDT PERPETUAL</p>
+              <div class="btc-symbol-row">
+                <p id="btcChartSymbol" class="eyebrow">GATE.IO · BTC_USDT PERPETUAL</p>
+                <form id="btcSymbolSearch" class="btc-symbol-search" role="search">
+                  <label for="btcSymbolInput">선물 종목 검색</label>
+                  <input id="btcSymbolInput" list="btcSymbolOptions" type="search" autocomplete="off" placeholder="BTC, ETH, SOL…" />
+                  <datalist id="btcSymbolOptions"></datalist>
+                  <button type="submit">분석</button>
+                </form>
+              </div>
               <div class="btc-chart-title-row">
                 <h2>실시간 차트와 ICT 셋업</h2>
                 <strong id="btcChartPrice">—</strong>
@@ -88,9 +78,11 @@
               <button type="button" aria-pressed="false" data-chart-tf="1h">1시간</button>
               <button type="button" aria-pressed="false" data-chart-tf="4h">4시간</button>
             </div>
+            <div class="btc-plan-switch btc-chart-direction" aria-label="분석 방향 선택"><button class="active" type="button" data-plan="long">LONG</button><button type="button" data-plan="short">SHORT</button></div>
             <div class="btc-chart-layers" aria-label="차트 레이어 표시 설정">
               <button type="button" class="active" aria-pressed="true" data-chart-layer="liquidity"><i class="liquidity"></i>유동성</button>
               <button type="button" class="active" aria-pressed="true" data-chart-layer="structure"><i class="structure"></i>구조 신호</button>
+              <button type="button" class="active" aria-pressed="true" data-chart-layer="ob"><i class="ob"></i>OB</button>
               <button type="button" class="active" aria-pressed="true" data-chart-layer="fvg"><i class="fvg"></i>FVG</button>
               <button type="button" class="active" aria-pressed="true" data-chart-layer="plan"><i class="plan"></i>거래 플랜</button>
             </div>
@@ -116,6 +108,7 @@
             <span><i class="sweep"></i>Sweep</span>
             <span><i class="cisd"></i>CISD</span>
             <span><i class="structure"></i>Displacement / 구조 변화</span>
+            <span><i class="ob"></i>Order Block 구간</span>
             <span><i class="fvg"></i>FVG 근거 구간</span>
             <span><i class="plan"></i>후보 점선 / ACTIVE 실선</span>
             <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts</a>
@@ -151,18 +144,9 @@
           <div id="btcTimeframes" class="btc-timeframes"></div>
         </section>
 
-        <section class="btc-main-grid">
-          <div>
-            <div class="btc-section-head plan-heading"><div><p class="eyebrow" id="btcPlanEyebrow">SHORT-TERM EXECUTION</p><h2 id="btcPlanHeading">단기 진입 시나리오</h2><p id="btcPlanContext">15분 구조와 5분봉 확정 기준</p></div><div class="btc-plan-switch"><button class="active" data-plan="long">LONG</button><button data-plan="short">SHORT</button></div></div>
-            <section id="btcPlanCard" class="panel btc-plan-card"></section>
-          </div>
-
-          <aside class="btc-side-stack">
-            <section class="panel btc-checklist-panel">
-              <div class="btc-section-head"><div><h2 id="btcChecklistHeading">단기 진입 체크</h2><p id="btcChecklistGuide">실행 전 필수 확인</p></div><strong id="btcChecklistScore">—</strong></div>
-              <div id="btcChecklist" class="btc-checklist"></div>
-            </section>
-          </aside>
+        <section class="panel btc-checklist-panel">
+          <div class="btc-section-head"><div><h2 id="btcChecklistHeading">단기 진입 체크</h2><p id="btcChecklistGuide">실행 전 필수 확인</p></div><strong id="btcChecklistScore">—</strong></div>
+          <div id="btcChecklist" class="btc-checklist"></div>
         </section>
 
         <section class="panel btc-market-data-panel">
