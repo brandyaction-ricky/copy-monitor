@@ -201,9 +201,11 @@
 
 .btc-main-grid { grid-template-columns: minmax(0, 1.65fr) minmax(280px, .55fr); }
 .btc-side-stack { grid-template-columns: 1fr; align-self: start; }
-.btc-checklist-panel { position: sticky; top: 76px; }
+.btc-checklist-panel { position: static; }
+.btc-analysis-row { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: stretch; gap: 16px; margin-bottom: 24px; }
+.btc-analysis-row>.panel { height: 100%; margin: 0; }
 
-.btc-market-data-panel { margin-top: 24px; }
+.btc-market-data-panel { margin-top: 0; }
 .btc-market-data-panel .btc-micro-data { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .btc-market-data-panel .btc-micro-data .wide { grid-column: span 2; }
 
@@ -271,6 +273,7 @@
 .btc-timeframe-targets>p { grid-column: 1 / -1; margin: 0; padding: 14px; border: 1px dashed #303a41; border-radius: 9px; color: #7d8991; font-size: 9px; line-height: 1.5; }
 
 @media (max-width: 900px) {
+  .btc-analysis-row { grid-template-columns: 1fr; }
   .btc-timeframe-setup { grid-template-columns: 1fr; }
   .btc-symbol-row { align-items: flex-start; flex-direction: column; gap: 8px; }
   .btc-symbol-search { width: 100%; }

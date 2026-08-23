@@ -83,6 +83,14 @@ test("Setup Score를 엔진 요약의 첫 카드로 배치하고 등급별 강�
   assert.match(css, /#btcEngineEdge\.score-a/);
 });
 
+test("의사결정 단계와 실행 확인 데이터를 데스크톱 한 줄에 배치한다", () => {
+  const row = html.match(/<div class="btc-analysis-row">([\s\S]*?)<\/div>\s*<\/div>/)?.[1] || "";
+  assert.match(row, /btc-checklist-panel/);
+  assert.match(row, /btc-market-data-panel/);
+  assert.match(css, /\.btc-analysis-row \{ display: grid; grid-template-columns:/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.btc-analysis-row \{ grid-template-columns: 1fr; \}/);
+});
+
 test("마커 원본 봉과 오버레이 가용 봉을 분리해 과거 구간에 소급 표시하지 않는다", () => {
   assert.match(script, /function sourceBarTime[\s\S]*if \(candle\.time >= target\) break/);
   assert.match(script, /function availabilityBarTime[\s\S]*if \(candle\.time >= target\) return candle\.time/);
