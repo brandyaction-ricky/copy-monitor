@@ -206,7 +206,7 @@
 .btc-analysis-row>.panel { height: 100%; margin: 0; }
 
 .btc-market-data-panel { margin-top: 0; }
-.btc-market-data-panel .btc-micro-data { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.btc-market-data-panel .btc-micro-data { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .btc-market-data-panel .btc-micro-data .wide { grid-column: span 2; }
 
 .btc-engine-panel {

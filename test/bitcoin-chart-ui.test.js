@@ -102,6 +102,10 @@ test("5·15분은 단기, 1·4시간은 스윙 전략으로 자동 전환한다"
   assert.match(script, /renderSelectedStrategy\(\)/);
 });
 
+test("실행 확인 데이터는 데스크톱에서 한 줄 3열로 표시한다", () => {
+  assert.match(css, /\.btc-market-data-panel \.btc-micro-data \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
+});
+
 test("마커 원본 봉과 오버레이 가용 봉을 분리해 과거 구간에 소급 표시하지 않는다", () => {
   assert.match(script, /function sourceBarTime[\s\S]*if \(candle\.time >= target\) break/);
   assert.match(script, /function availabilityBarTime[\s\S]*if \(candle\.time >= target\) return candle\.time/);
