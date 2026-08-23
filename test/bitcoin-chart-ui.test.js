@@ -28,6 +28,7 @@ test("차트는 Gate 공개 WebSocket만 사용하고 실시간 봉과 확정봉
 
 test("엔진 오버레이는 해당 실행 시간대에서만 후보 점선과 ACTIVE 실선을 분리한다", () => {
   assert.match(script, /engine\?\.executionTimeframe === selectedChartTimeframe/);
+  assert.match(script, /scope\?\.timeframes\?\.\[selectedChartTimeframe\]\?\.plans\?\.\[selectedPlan\]/);
   assert.match(script, /currentChartPlanExecutable\(\)/);
   assert.match(script, /visiblePlan = executable \? engine\?\.tradePlan : engine\?\.candidatePlan/);
   assert.match(script, /candidate \? dotted : solid/);

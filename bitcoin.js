@@ -633,7 +633,10 @@ function currentStrategy() {
 
 function currentDecisionPlan() {
   const scope = bitcoinData?.decisionEngine?.[selectedStrategy];
-  return scope?.plans?.[selectedPlan] || currentStrategy()?.decisionEngine || null;
+  return scope?.timeframes?.[selectedChartTimeframe]?.plans?.[selectedPlan]
+    || scope?.plans?.[selectedPlan]
+    || currentStrategy()?.decisionEngine
+    || null;
 }
 
 function timeText(value) {

@@ -222,6 +222,10 @@ test("GET /api/bitcoin 응답에 분석 엔진과 정렬 가능한 chart payload
   assert.equal(res.body.candleClosedAt, res.body.chart.timeframes["5m"].analysisCutoff);
   assert.equal(res.body.decisionEngine.pricePolicy.candidatePlan, "ANALYSIS_ONLY_VISIBLE");
   assert.equal(res.body.decisionEngine.pricePolicy.executionPlan, "ACTIVE_ENTRY_READY_ONLY");
+  assert.equal(res.body.decisionEngine.shortTerm.timeframes["15m"].plans.long.executionTimeframe, "15m");
+  assert.equal(res.body.decisionEngine.shortTerm.timeframes["15m"].plans.short.executionTimeframe, "15m");
+  assert.equal(res.body.decisionEngine.swing.timeframes["4h"].plans.long.executionTimeframe, "4h");
+  assert.equal(res.body.decisionEngine.swing.timeframes["4h"].plans.short.executionTimeframe, "4h");
   for (const strategy of [res.body.decisionEngine.shortTerm, res.body.decisionEngine.swing]) {
     for (const setup of Object.values(strategy.plans)) {
       assert.equal(setup.tradePlan, null);
@@ -236,5 +240,7 @@ test("GET /api/bitcoin 응답에 분석 엔진과 정렬 가능한 chart payload
     }
   }
   assert.ok(res.body.decisionEngine.shortTerm.selected.generatedAt <= res.body.chart.timeframes["5m"].analysisCutoff);
+  assert.ok(res.body.decisionEngine.shortTerm.timeframes["15m"].selected.generatedAt <= res.body.chart.timeframes["15m"].analysisCutoff);
   assert.ok(res.body.decisionEngine.swing.selected.generatedAt <= res.body.chart.timeframes["1h"].analysisCutoff);
+  assert.ok(res.body.decisionEngine.swing.timeframes["4h"].selected.generatedAt <= res.body.chart.timeframes["4h"].analysisCutoff);
 });

@@ -790,6 +790,25 @@ async function loadBitcoinAnalysis() {
     mode: "BALANCED",
   }));
   const model1ShortSelected = chooseModelDecision(model1ShortLong, model1ShortShort);
+  const model1Short15Long = toPublicDecisionSetup(evaluateSweepReversal({
+    executionCandles: candles15,
+    contextCandles: candles1h,
+    direction: "LONG",
+    executionTimeframe: "15m",
+    contextTimeframe: "1h",
+    namedLiquidity: shortModelLiquidity,
+    mode: "BALANCED",
+  }));
+  const model1Short15Short = toPublicDecisionSetup(evaluateSweepReversal({
+    executionCandles: candles15,
+    contextCandles: candles1h,
+    direction: "SHORT",
+    executionTimeframe: "15m",
+    contextTimeframe: "1h",
+    namedLiquidity: shortModelLiquidity,
+    mode: "BALANCED",
+  }));
+  const model1Short15Selected = chooseModelDecision(model1Short15Long, model1Short15Short);
   const model1SwingLong = toPublicDecisionSetup(evaluateSweepReversal({
     executionCandles: candles1h,
     contextCandles: candles4h,
@@ -809,6 +828,25 @@ async function loadBitcoinAnalysis() {
     mode: "BALANCED",
   }));
   const model1SwingSelected = chooseModelDecision(model1SwingLong, model1SwingShort);
+  const model1Swing4hLong = toPublicDecisionSetup(evaluateSweepReversal({
+    executionCandles: candles4h,
+    contextCandles: candles1d,
+    direction: "LONG",
+    executionTimeframe: "4h",
+    contextTimeframe: "1d",
+    namedLiquidity: swingModelLiquidity,
+    mode: "BALANCED",
+  }));
+  const model1Swing4hShort = toPublicDecisionSetup(evaluateSweepReversal({
+    executionCandles: candles4h,
+    contextCandles: candles1d,
+    direction: "SHORT",
+    executionTimeframe: "4h",
+    contextTimeframe: "1d",
+    namedLiquidity: swingModelLiquidity,
+    mode: "BALANCED",
+  }));
+  const model1Swing4hSelected = chooseModelDecision(model1Swing4hLong, model1Swing4hShort);
   const structure5 = detectMarketStructure(candles5, { eventLookback: 80 });
   const structure15 = detectMarketStructure(candles15, { eventLookback: 80 });
   const structure1h = detectMarketStructure(candles1h, { eventLookback: 90 });
@@ -962,11 +1000,19 @@ async function loadBitcoinAnalysis() {
         selectedDirection: model1ShortSelected.direction,
         selected: model1ShortSelected,
         plans: { long: model1ShortLong, short: model1ShortShort },
+        timeframes: {
+          "5m": { selectedDirection: model1ShortSelected.direction, selected: model1ShortSelected, plans: { long: model1ShortLong, short: model1ShortShort } },
+          "15m": { selectedDirection: model1Short15Selected.direction, selected: model1Short15Selected, plans: { long: model1Short15Long, short: model1Short15Short } },
+        },
       },
       swing: {
         selectedDirection: model1SwingSelected.direction,
         selected: model1SwingSelected,
         plans: { long: model1SwingLong, short: model1SwingShort },
+        timeframes: {
+          "1h": { selectedDirection: model1SwingSelected.direction, selected: model1SwingSelected, plans: { long: model1SwingLong, short: model1SwingShort } },
+          "4h": { selectedDirection: model1Swing4hSelected.direction, selected: model1Swing4hSelected, plans: { long: model1Swing4hLong, short: model1Swing4hShort } },
+        },
       },
     },
     scores: { long: longScore, short: shortScore },
