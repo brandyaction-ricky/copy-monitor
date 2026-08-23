@@ -67,6 +67,12 @@
 .btc-symbol-search input { width: 150px; min-height: 34px; padding: 0 10px; border: 1px solid #2a3740; border-radius: 6px; outline: 0; background: #090f13; color: #e7eff2; font: 800 10px monospace; }
 .btc-symbol-search input:focus { border-color: #43d7b2; box-shadow: 0 0 0 2px rgba(67, 215, 178, .12); }
 .btc-symbol-search button { min-height: 34px; padding: 0 12px; border: 1px solid #365c51; border-radius: 6px; background: #17332c; color: #9af0d7; font-size: 9px; font-weight: 900; cursor: pointer; }
+.btc-symbol-search button.favorite { width: 34px; padding: 0; border-color: #4b4026; background: #211b0e; color: #f5b342; font-size: 16px; }
+.btc-symbol-search button.favorite.active { border-color: #7b6429; background: #33270d; color: #ffd56a; }
+.btc-favorite-symbols { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.btc-favorite-symbols>span,.btc-favorite-symbols>small { color: #68757e; font-size: 8px; }
+.btc-favorite-symbols button { min-height: 28px; padding: 0 9px; border: 1px solid #28343c; border-radius: 999px; background: #0c1318; color: #8b979e; font-size: 8px; font-weight: 850; cursor: pointer; }
+.btc-favorite-symbols button:hover,.btc-favorite-symbols button.active { border-color: #5d4c24; background: #211b0e; color: #f5c65e; }
 
 .btc-chart-statuses { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .btc-chart-statuses>span {
@@ -151,8 +157,14 @@
 .btc-chart-quote>em.short { background: #3a1c25; color: var(--red); }
 .btc-chart-quote>em.context { background: #182433; color: #8bc5f4; }
 .btc-chart-quote>em.candidate { background: #302717; color: #f5c66d; }
+.btc-chart-size-controls { display: flex; align-items: center; gap: 3px; }
+.btc-chart-size-controls button { min-width: 28px; min-height: 24px; padding: 0 7px; border: 1px solid #28343c; border-radius: 5px; background: #111920; color: #8e9aa2; font-size: 8px; font-weight: 900; cursor: pointer; }
+.btc-chart-size-controls button:hover { border-color: #3e5b52; color: #d9e7e2; }
 
 .btc-chart-stage { position: relative; width: 100%; height: 520px; background: #090d11; }
+.btc-chart-resize-handle { display: grid; place-items: center; width: 100%; height: 15px; padding: 0; border: 0; border-top: 1px solid #1c272d; border-bottom: 1px solid #1c272d; background: #0b1115; cursor: ns-resize; touch-action: none; }
+.btc-chart-resize-handle span { width: 44px; height: 3px; border-radius: 999px; background: #34434b; }
+.btc-chart-resize-handle:hover span,.btc-chart-resize-handle.dragging span { background: #43d7b2; }
 .btc-chart-canvas { width: 100%; height: 100%; }
 .btc-chart-fallback {
   position: absolute;
@@ -277,6 +289,9 @@
 }
 
 @media (max-width: 560px) {
+  .btc-chart-quote { flex-wrap: wrap; padding: 7px 10px; }
+  .btc-chart-quote>span:nth-of-type(2) { margin-left: 0; }
+  .btc-chart-size-controls { margin-left: auto; }
   .btc-timeframe-targets { grid-template-columns: 1fr; }
   .btc-chart-head { align-items: flex-start; flex-direction: column; padding: 16px 13px 13px; }
   .btc-chart-head h2 { font-size: 17px; }

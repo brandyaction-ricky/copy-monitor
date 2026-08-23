@@ -59,6 +59,23 @@ test("시간대별 방향 정렬에 미충족 가산점과 분할 익절 후보�
   assert.match(script, /visiblePlan\.targets\.slice\(0, 3\)/);
 });
 
+test("종목 즐겨찾기는 로컬 저장되고 선택 시 해당 선물 분석으로 전환된다", () => {
+  assert.match(html, /id="btcFavoriteToggle"/);
+  assert.match(html, /id="btcFavoriteSymbols"/);
+  assert.match(script, /tooja\.trading\.favoriteContracts\.v1/);
+  assert.match(script, /data-favorite-contract/);
+  assert.match(script, /analyzeContract\(button\.dataset\.favoriteContract\)/);
+});
+
+test("차트는 버튼과 드래그 핸들로 높이를 조절하고 설정을 저장한다", () => {
+  assert.match(html, /data-chart-height="-100"/);
+  assert.match(html, /id="btcChartResizeHandle"/);
+  assert.match(script, /CHART_HEIGHT_MIN = 360/);
+  assert.match(script, /CHART_HEIGHT_MAX = 900/);
+  assert.match(script, /pointerdown/);
+  assert.match(script, /tooja\.trading\.chartHeight\.v1/);
+});
+
 test("마커 원본 봉과 오버레이 가용 봉을 분리해 과거 구간에 소급 표시하지 않는다", () => {
   assert.match(script, /function sourceBarTime[\s\S]*if \(candle\.time >= target\) break/);
   assert.match(script, /function availabilityBarTime[\s\S]*if \(candle\.time >= target\) return candle\.time/);

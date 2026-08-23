@@ -16,6 +16,11 @@ let selectedPlan = "long";
 let selectedStrategy = "shortTerm";
 let selectedChartTimeframe = "5m";
 let selectedContract = "BTC_USDT";
+const FAVORITES_KEY = "tooja.trading.favoriteContracts.v1";
+const CHART_HEIGHT_KEY = "tooja.trading.chartHeight.v1";
+const CHART_HEIGHT_MIN = 360;
+const CHART_HEIGHT_MAX = 900;
+const CHART_HEIGHT_DEFAULT = 520;
 
 const chartTimeframeLabels = { "5m": "5분봉", "15m": "15분봉", "1h": "1시간봉", "4h": "4시간봉" };
 const chartLayerState = { liquidity: true, structure: true, ob: true, fvg: true, plan: true };
@@ -665,6 +670,48 @@ function toast(message) {
   window.bitcoinToastTimer = setTimeout(() => target.classList.remove("show"), 2600);
 }
 
+function storedFavorites() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
+    return Array.isArray(rows) ? rows.filter((item) => /^[A-Z0-9]{2,20}_USDT$/.test(item)).slice(0, 20) : [];
+  } catch (_) { return []; }
+}
+
+function saveFavorites(rows) {
+  try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(rows.slice(0, 20))); } catch (_) { /* 저장 불가 환경 */ }
+}
+
+function renderFavoriteSymbols() {
+  const rows = storedFavorites();
+  const active = rows.includes(selectedContract);
+  const toggle = $b("btcFavoriteToggle");
+  toggle.textContent = active ? "★" : "☆";
+  toggle.classList.toggle("active", active);
+  toggle.setAttribute("aria-pressed", String(active));
+  toggle.title = active ? "현재 종목 즐겨찾기 해제" : "현재 종목 즐겨찾기";
+  $b("btcFavoriteSymbols").innerHTML = rows.length
+    ? `<span>즐겨찾기</span>${rows.map((contract) => `<button type="button" data-favorite-contract="${contract}" class="${contract === selectedContract ? "active" : ""}">★ ${contract.replace(/_USDT$/, "")}</button>`).join("")}`
+    : `<small>☆ 자주 보는 종목을 즐겨찾기에 추가해 보세요.</small>`;
+}
+
+function storedChartHeight() {
+  try { return clampNumber(Number(localStorage.getItem(CHART_HEIGHT_KEY)) || CHART_HEIGHT_DEFAULT, CHART_HEIGHT_MIN, CHART_HEIGHT_MAX); }
+  catch (_) { return CHART_HEIGHT_DEFAULT; }
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, Number(value) || min));
+}
+
+function setChartHeight(height, persist = true) {
+  const next = clampNumber(height, CHART_HEIGHT_MIN, CHART_HEIGHT_MAX);
+  $b("btcChartStage").style.height = `${next}px`;
+  if (persist) {
+    try { localStorage.setItem(CHART_HEIGHT_KEY, String(next)); } catch (_) { /* 저장 불가 환경 */ }
+  }
+  tradingChartRuntime.chart?.applyOptions({ height: next });
+}
+
 function renderTimeframes() {
   const labels = [
     ["week", "1W", "큰 방향"], ["day", "1D", "중기 방향"], ["fourHour", "4H", "스윙 구조"],
@@ -941,6 +988,7 @@ function renderBitcoin() {
   $b("tradingHeroAsset").textContent = asset;
   $b("btcChartSymbol").textContent = `GATE.IO · ${selectedContract} PERPETUAL`;
   $b("btcSymbolInput").value = asset;
+  renderFavoriteSymbols();
   $b("btcMarketStatus").textContent = `${bitcoinData.source} · LIVE`;
   $b("btcCandleTime").textContent = `최근 확정 5분봉 ${timeText(bitcoinData.candleClosedAt)} KST`;
   selectedPlan = currentStrategy().primaryPlan === "SHORT" ? "short" : "long";
@@ -978,6 +1026,16 @@ function contractFromSearch(value) {
   return /^[A-Z0-9]{2,20}_USDT$/.test(contract) ? contract : null;
 }
 
+async function analyzeContract(contract) {
+  selectedContract = contract;
+  disconnectTradingChartSocket();
+  tradingChartRuntime.liveCandles = {};
+  tradingChartRuntime.lastTimeframe = null;
+  renderFavoriteSymbols();
+  $b("btcMarketStatus").textContent = `${contract.replace(/_USDT$/, "")} 분석 연결 중`;
+  await loadBitcoin(true);
+}
+
 async function loadContractOptions() {
   try {
     const response = await fetch("/api/contracts", { cache: "no-store" });
@@ -1000,12 +1058,53 @@ $b("btcSymbolSearch").addEventListener("submit", async (event) => {
     loadBitcoin(true);
     return;
   }
-  selectedContract = contract;
-  disconnectTradingChartSocket();
-  tradingChartRuntime.liveCandles = {};
-  tradingChartRuntime.lastTimeframe = null;
-  $b("btcMarketStatus").textContent = `${contract.replace(/_USDT$/, "")} 분석 연결 중`;
-  await loadBitcoin(true);
+  await analyzeContract(contract);
+});
+
+$b("btcFavoriteToggle").addEventListener("click", () => {
+  const rows = storedFavorites();
+  const next = rows.includes(selectedContract) ? rows.filter((item) => item !== selectedContract) : [selectedContract, ...rows];
+  saveFavorites(next);
+  renderFavoriteSymbols();
+  toast(rows.includes(selectedContract) ? "즐겨찾기에서 삭제했습니다." : `${selectedContract.replace(/_USDT$/, "")}를 즐겨찾기에 추가했습니다.`);
+});
+
+$b("btcFavoriteSymbols").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-favorite-contract]");
+  if (!button || button.dataset.favoriteContract === selectedContract) return;
+  analyzeContract(button.dataset.favoriteContract);
+});
+
+document.querySelectorAll("[data-chart-height]").forEach((button) => button.addEventListener("click", () => {
+  const current = $b("btcChartStage").getBoundingClientRect().height || storedChartHeight();
+  setChartHeight(button.dataset.chartHeight === "reset" ? CHART_HEIGHT_DEFAULT : current + Number(button.dataset.chartHeight));
+}));
+
+const chartResizeHandle = $b("btcChartResizeHandle");
+chartResizeHandle.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  const startY = event.clientY;
+  const startHeight = $b("btcChartStage").getBoundingClientRect().height;
+  chartResizeHandle.setPointerCapture?.(event.pointerId);
+  chartResizeHandle.classList.add("dragging");
+  const move = (moveEvent) => setChartHeight(startHeight + moveEvent.clientY - startY, false);
+  const finish = () => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", finish);
+    document.removeEventListener("pointercancel", finish);
+    chartResizeHandle.classList.remove("dragging");
+    setChartHeight($b("btcChartStage").getBoundingClientRect().height, true);
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", finish);
+  document.addEventListener("pointercancel", finish);
+});
+
+chartResizeHandle.addEventListener("keydown", (event) => {
+  if (!["ArrowUp", "ArrowDown", "Home"].includes(event.key)) return;
+  event.preventDefault();
+  const current = $b("btcChartStage").getBoundingClientRect().height || storedChartHeight();
+  setChartHeight(event.key === "Home" ? CHART_HEIGHT_DEFAULT : current + (event.key === "ArrowUp" ? 50 : -50));
 });
 
 document.querySelectorAll("[data-plan]").forEach((button) => button.addEventListener("click", () => {
@@ -1065,6 +1164,8 @@ setInterval(() => {
   $b("bitcoinClock").textContent = new Date().toLocaleString("ko-KR", { hour12:false, timeZone:"Asia/Seoul" }) + " KST";
 }, 1000);
 loadContractOptions();
+setChartHeight(storedChartHeight(), false);
+renderFavoriteSymbols();
 loadBitcoin();
 setInterval(() => {
   if (!document.hidden) loadBitcoin(false);

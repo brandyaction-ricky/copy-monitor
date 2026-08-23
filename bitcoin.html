@@ -56,8 +56,10 @@
                   <input id="btcSymbolInput" list="btcSymbolOptions" type="search" autocomplete="off" placeholder="BTC, ETH, SOL…" />
                   <datalist id="btcSymbolOptions"></datalist>
                   <button type="submit">분석</button>
+                  <button id="btcFavoriteToggle" class="favorite" type="button" aria-pressed="false" title="현재 종목 즐겨찾기">☆</button>
                 </form>
               </div>
+              <div id="btcFavoriteSymbols" class="btc-favorite-symbols" aria-label="즐겨찾기 종목"></div>
               <div class="btc-chart-title-row">
                 <h2>실시간 차트와 ICT 셋업</h2>
                 <strong id="btcChartPrice">—</strong>
@@ -92,6 +94,7 @@
             <strong id="btcChartTimeframeLabel">5분봉</strong>
             <span id="btcChartOhlc">O — · H — · L — · C —</span>
             <span id="btcChartHoverTime">최근 확정 캔들</span>
+            <div class="btc-chart-size-controls" aria-label="차트 높이 조절"><button type="button" data-chart-height="-100" title="차트 축소">−</button><button type="button" data-chart-height="reset">기본</button><button type="button" data-chart-height="100" title="차트 확대">＋</button></div>
             <em id="btcChartPlanState">SHADOW · 분석 후보 확인 중</em>
           </div>
 
@@ -102,6 +105,7 @@
               <span>시장 분석은 계속 갱신됩니다. 잠시 후 새로고침해 주세요.</span>
             </div>
           </div>
+          <button id="btcChartResizeHandle" class="btc-chart-resize-handle" type="button" aria-label="드래그하여 차트 높이 조절"><span></span></button>
 
           <div class="btc-chart-legend">
             <span><i class="liquidity"></i>유동성 레벨</span>
