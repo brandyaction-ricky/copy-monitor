@@ -219,7 +219,12 @@ function ensureTradingChart() {
       },
       localization: { locale: "ko-KR", timeFormatter: formatChartTimeKst, priceFormatter: (price) => Number(price).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-      handleScale: { axisPressedMouseMove: false, mouseWheel: true, pinch: true },
+      handleScale: {
+        axisPressedMouseMove: { time: false, price: true },
+        axisDoubleClickReset: { time: false, price: true },
+        mouseWheel: true,
+        pinch: true,
+      },
     });
     const candleSeries = addTradingChartSeries(chart, library.CandlestickSeries, {
       upColor: "#2fd6ad", downColor: "#f05c70", borderUpColor: "#2fd6ad", borderDownColor: "#f05c70", wickUpColor: "#70ddc2", wickDownColor: "#ed8190",

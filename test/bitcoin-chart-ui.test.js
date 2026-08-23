@@ -76,6 +76,11 @@ test("차트는 버튼과 드래그 핸들로 높이를 조절하고 설정을 �
   assert.match(script, /tooja\.trading\.chartHeight\.v1/);
 });
 
+test("오른쪽 가격축을 위아래로 드래그해 가격 스케일을 확대·축소한다", () => {
+  assert.match(script, /axisPressedMouseMove:\s*\{ time: false, price: true \}/);
+  assert.match(script, /axisDoubleClickReset:\s*\{ time: false, price: true \}/);
+});
+
 test("Setup Score를 첫 카드에 배치하고 LONG 초록·SHORT 빨강을 적용한다", () => {
   const summary = html.match(/<div class="btc-engine-summary">([\s\S]*?)<\/div>/)?.[1] || "";
   assert.ok(summary.indexOf("btcEngineEdge") < summary.indexOf("btcEngineDecision"));
