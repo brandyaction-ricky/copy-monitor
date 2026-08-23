@@ -677,6 +677,26 @@ function renderTimeframes() {
     const focus = focusFrames.includes(key) ? "focus" : "context";
     return `<article class="btc-timeframe ${tone} ${focus}"><small>${label} · ${role}</small><strong>${directionLabel(frame.direction)}</strong><div><span>RSI ${numberText(frame.rsi, 1)}</span><span>EMA20 ${money(frame.ema20)}</span></div></article>`;
   }).join("");
+  const engine = currentDecisionPlan();
+  const visiblePlan = engine?.tradePlan || engine?.candidatePlan;
+  const bonusLabels = {
+    "HTF Context": "상위 시간대 방향",
+    "Premium/Discount Location": "프리미엄/디스카운트 위치",
+    "Liquidity Pool": "유동성 풀",
+    "Liquidity Sweep": "유동성 스윕",
+    CISD: "CISD",
+    Displacement: "변위",
+    "Internal Structure Break": "내부 구조 돌파",
+    MSS: "MSS",
+    "FVG Entry Array": "FVG 진입 구간",
+  };
+  $b("btcTimeframeSetupScore").textContent = `${engine?.score ?? 0}/100 · ${engine?.scoreBand?.grade || "—"}`;
+  $b("btcTimeframeBonus").innerHTML = engine?.bonusMissing?.length
+    ? engine.bonusMissing.map((item) => `<span>${escapeBtc(bonusLabels[item] || item)}</span>`).join("")
+    : `<span class="complete">모든 가산점 충족</span>`;
+  $b("btcTimeframeTargets").innerHTML = visiblePlan?.targets?.length
+    ? visiblePlan.targets.slice(0, 3).map((target, index) => `<article><small>TP${index + 1} · ${escapeBtc(target.source || "LIQ")}</small><strong>${money(target.price)}</strong><b>R:R ${numberText(target.rr, 2)}</b></article>`).join("")
+    : `<p>현재 ${chartTimeframeLabels[selectedChartTimeframe]} ${selectedPlan.toUpperCase()} 방향에서 1.2R 이상 유동성 목표가 없습니다.</p>`;
 }
 
 function verdictTone(direction) {
@@ -996,6 +1016,7 @@ document.querySelectorAll("[data-plan]").forEach((button) => button.addEventList
     item.setAttribute("aria-pressed", String(active));
   });
   renderDecisionEngine();
+  renderTimeframes();
   renderPlan();
   renderChecklist();
   renderMarketData();
@@ -1017,6 +1038,7 @@ document.querySelectorAll("[data-chart-tf]").forEach((button) => button.addEvent
   const timeframe = button.dataset.chartTf;
   if (!bitcoinData?.chart?.timeframes?.[timeframe] || timeframe === selectedChartTimeframe) return;
   selectedChartTimeframe = timeframe;
+  renderTimeframes();
   renderTradingChart({ fit: true });
 }));
 document.querySelectorAll("[data-chart-layer]").forEach((button) => button.addEventListener("click", () => {

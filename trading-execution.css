@@ -238,7 +238,23 @@
 .btc-verdict-head span.blocked,.btc-strategy-title em.blocked { background: #3a1c25; color: #ff9bac; }
 .btc-execution-strip strong.blocked { color: #ff8da1; }
 
+.btc-timeframe-setup { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(0, 1.3fr); gap: 16px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #202b32; }
+.btc-timeframe-setup>section { min-width: 0; }
+.btc-timeframe-setup-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.btc-timeframe-setup-head h3 { margin: 0; font-size: 12px; }
+.btc-timeframe-setup-head span { color: #77848d; font: 800 9px monospace; }
+.btc-timeframe-bonus { display: flex; flex-wrap: wrap; gap: 7px; }
+.btc-timeframe-bonus span { padding: 8px 10px; border: 1px solid #28323a; border-radius: 8px; background: #11171c; color: #8f999f; font-size: 9px; }
+.btc-timeframe-bonus span.complete { border-color: #285144; background: #11231e; color: var(--green); }
+.btc-timeframe-targets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.btc-timeframe-targets article { display: grid; gap: 7px; padding: 12px; border: 1px solid #253139; border-radius: 9px; background: #0a1117; }
+.btc-timeframe-targets small { color: #74828c; font-size: 8px; }
+.btc-timeframe-targets strong { font: 700 12px monospace; }
+.btc-timeframe-targets b { color: #aab5bc; font-size: 9px; }
+.btc-timeframe-targets>p { grid-column: 1 / -1; margin: 0; padding: 14px; border: 1px dashed #303a41; border-radius: 9px; color: #7d8991; font-size: 9px; line-height: 1.5; }
+
 @media (max-width: 900px) {
+  .btc-timeframe-setup { grid-template-columns: 1fr; }
   .btc-symbol-row { align-items: flex-start; flex-direction: column; gap: 8px; }
   .btc-symbol-search { width: 100%; }
   .btc-symbol-search input { width: 100%; flex: 1; }
@@ -261,6 +277,7 @@
 }
 
 @media (max-width: 560px) {
+  .btc-timeframe-targets { grid-template-columns: 1fr; }
   .btc-chart-head { align-items: flex-start; flex-direction: column; padding: 16px 13px 13px; }
   .btc-chart-head h2 { font-size: 17px; }
   .btc-chart-title-row>strong { font-size: 14px; }

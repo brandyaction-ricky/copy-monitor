@@ -52,6 +52,13 @@ test("중복된 상단 요약과 상세 진입 시나리오 카드를 제거한�
   assert.doesNotMatch(html, /단기 진입 시나리오/);
 });
 
+test("시간대별 방향 정렬에 미충족 가산점과 분할 익절 후보를 함께 표시한다", () => {
+  assert.match(html, /id="btcTimeframeBonus"/);
+  assert.match(html, /id="btcTimeframeTargets"/);
+  assert.match(script, /engine\?\.bonusMissing/);
+  assert.match(script, /visiblePlan\.targets\.slice\(0, 3\)/);
+});
+
 test("마커 원본 봉과 오버레이 가용 봉을 분리해 과거 구간에 소급 표시하지 않는다", () => {
   assert.match(script, /function sourceBarTime[\s\S]*if \(candle\.time >= target\) break/);
   assert.match(script, /function availabilityBarTime[\s\S]*if \(candle\.time >= target\) return candle\.time/);
