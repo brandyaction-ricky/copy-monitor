@@ -14,6 +14,13 @@ import { chooseModelDecision, evaluateSweepReversal } from "../lib/trading/model
 const GATE_HOST = "https://api.gateio.ws/api/v4";
 const CONTRACT = "BTC_USDT";
 const ICT_V2_LIFECYCLE = process.env.ICT_V2_LIFECYCLE === "ACTIVE" ? "ACTIVE" : "SHADOW";
+const CHART_CANDLE_LIMIT = 240;
+const CHART_TIMEFRAMES = Object.freeze({
+  "5m": 5 * 60,
+  "15m": 15 * 60,
+  "1h": 60 * 60,
+  "4h": 4 * 60 * 60,
+});
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const round = (value, digits = 2) => Number(finite(value).toFixed(digits));
@@ -44,9 +51,52 @@ function normalizeCandles(rows) {
     .sort((a, b) => a.t - b.t);
 }
 
-function completedCandles(rows, intervalSeconds) {
-  const now = Date.now() / 1000;
-  return rows.filter((candle) => candle.t + intervalSeconds <= now);
+function completedCandles(rows, intervalSeconds, nowSeconds = Date.now() / 1000) {
+  return rows.filter((candle) => candle.t + intervalSeconds <= nowSeconds);
+}
+
+function chartTimeframe(candles, timeframe, intervalSeconds, nowSeconds) {
+  const rows = completedCandles(normalizeCandles(candles), intervalSeconds, nowSeconds)
+    .slice(-CHART_CANDLE_LIMIT)
+    .map(({ t, o, h, l, c, v }) => ({ t, o, h, l, c, v }));
+  const first = rows[0];
+  const last = rows.at(-1);
+  const analysisCutoffSeconds = last ? last.t + intervalSeconds : null;
+  return {
+    timeframe,
+    intervalSeconds,
+    count: rows.length,
+    startAt: first ? new Date(first.t * 1000).toISOString() : null,
+    endAt: analysisCutoffSeconds ? new Date(analysisCutoffSeconds * 1000).toISOString() : null,
+    analysisCutoff: analysisCutoffSeconds ? new Date(analysisCutoffSeconds * 1000).toISOString() : null,
+    candles: rows,
+  };
+}
+
+function buildChartPayload(candlesByTimeframe, nowSeconds = Date.now() / 1000) {
+  const timeframes = Object.fromEntries(Object.entries(CHART_TIMEFRAMES).map(([timeframe, intervalSeconds]) => [
+    timeframe,
+    chartTimeframe(candlesByTimeframe[timeframe] || [], timeframe, intervalSeconds, nowSeconds),
+  ]));
+  return {
+    version: "1.0",
+    symbol: CONTRACT,
+    exchange: "Gate.io",
+    market: "USDT Perpetual Futures",
+    defaultTimeframe: "5m",
+    allowedTimeframes: Object.keys(CHART_TIMEFRAMES),
+    closedCandlesOnly: true,
+    timeUnit: "unix_seconds",
+    candleTime: "OPEN_TIME",
+    analysisCutoff: timeframes["5m"].analysisCutoff,
+    alignment: {
+      candleTimestamp: "t is candle open time",
+      candleClose: "t + intervalSeconds",
+      eventTimestamp: "decisionEngine feature confirmedAt (ISO-8601)",
+      invariant: "confirmedAt <= timeframe.analysisCutoff",
+    },
+    timeframes,
+  };
 }
 
 function ema(values, period) {
@@ -621,6 +671,60 @@ function decisionStatus(result) {
   return `WAIT · ${result.state.stateLabel} · ${result.state.nextCondition}`;
 }
 
+function toPublicDecisionSetup(result, lifecycle = ICT_V2_LIFECYCLE) {
+  if (!result) return result;
+  const stateReady = result.state?.state === "ENTRY_READY";
+  const directionalDecision = ["LONG", "SHORT"].includes(result.decision);
+  const engineEligible = Boolean(stateReady && result.hardFilterPassed && directionalDecision && result.tradePlan);
+  const executionEligible = lifecycle === "ACTIVE" && engineEligible;
+  const executionPlan = executionEligible ? result.tradePlan : null;
+  const lockedPrices = { entry: null, entryZone: null, stop: null, targets: null };
+  const referencePrices = executionPlan ? {
+    entry: executionPlan.entry,
+    entryZone: executionPlan.entryZone,
+    stop: executionPlan.stop,
+    targets: executionPlan.targets,
+  } : lockedPrices;
+  const candidatePlan = result.candidatePlan ? {
+    ...result.candidatePlan,
+    classification: "ANALYSIS_CANDIDATE",
+    analysisCandidateOnly: true,
+    orderExecutable: false,
+    lifecycle,
+    notice: "분석·차트 근거용 후보 레벨이며 실제 주문 또는 실행 승인이 아닙니다.",
+  } : null;
+  return {
+    ...result,
+    candidatePlan,
+    tradePlan: executionPlan,
+    overlayPolicy: {
+      evidenceVisible: true,
+      candidateLevelsVisible: true,
+      candidateClassification: "ANALYSIS_ONLY",
+      executionLevelsVisible: executionEligible,
+      executionRule: "ACTIVE + ENTRY_READY + Hard Filter + Directional Decision",
+    },
+    execution: {
+      eligible: executionEligible,
+      lifecycle,
+      stateReady,
+      hardFilterPassed: Boolean(result.hardFilterPassed),
+      orderConnection: "NOT_CONNECTED",
+      orderStatus: "NO_ACTUAL_ORDER",
+      referencePrices,
+      lockReason: executionEligible
+        ? null
+        : lifecycle !== "ACTIVE"
+          ? "SHADOW_LIFECYCLE"
+          : !stateReady
+            ? "ENTRY_NOT_READY"
+            : !result.hardFilterPassed
+              ? "HARD_FILTER_FAILED"
+              : "NO_DIRECTIONAL_DECISION",
+    },
+  };
+}
+
 async function loadBitcoinAnalysis() {
   const [tickers, raw5, raw15, raw1h, raw4h, raw1d, raw1w, orderBookRaw] = await Promise.all([
     gatePublic("/futures/usdt/tickers"),
@@ -633,12 +737,13 @@ async function loadBitcoinAnalysis() {
     gatePublic("/futures/usdt/order_book", { contract: CONTRACT, limit: "20", with_id: "true" }),
   ]);
   const ticker = (Array.isArray(tickers) ? tickers : []).find((item) => item.contract === CONTRACT) || {};
-  const candles5 = completedCandles(normalizeCandles(raw5), 5 * 60);
-  const candles15 = completedCandles(normalizeCandles(raw15), 15 * 60);
-  const candles1h = completedCandles(normalizeCandles(raw1h), 60 * 60);
-  const candles4h = completedCandles(normalizeCandles(raw4h), 4 * 60 * 60);
-  const candles1d = completedCandles(normalizeCandles(raw1d), 24 * 60 * 60);
-  const candles1w = completedCandles(normalizeCandles(raw1w), 7 * 24 * 60 * 60);
+  const analysisNowSeconds = Date.now() / 1000;
+  const candles5 = completedCandles(normalizeCandles(raw5), 5 * 60, analysisNowSeconds);
+  const candles15 = completedCandles(normalizeCandles(raw15), 15 * 60, analysisNowSeconds);
+  const candles1h = completedCandles(normalizeCandles(raw1h), 60 * 60, analysisNowSeconds);
+  const candles4h = completedCandles(normalizeCandles(raw4h), 4 * 60 * 60, analysisNowSeconds);
+  const candles1d = completedCandles(normalizeCandles(raw1d), 24 * 60 * 60, analysisNowSeconds);
+  const candles1w = completedCandles(normalizeCandles(raw1w), 7 * 24 * 60 * 60, analysisNowSeconds);
   if ([candles5, candles15, candles1h, candles4h, candles1d].some((rows) => rows.length < 60) || candles1w.length < 22) {
     throw new Error("비트코인 다중 시간대 캔들 데이터가 부족합니다.");
   }
@@ -666,7 +771,7 @@ async function loadBitcoinAnalysis() {
   const session = sessionReferenceLevels(candles5, candles1d) || {};
   const shortModelLiquidity = namedLiquidityReferences(session, candles5, "SHORT_TERM");
   const swingModelLiquidity = namedLiquidityReferences(session, candles5, "SWING");
-  const model1ShortLong = evaluateSweepReversal({
+  const model1ShortLong = toPublicDecisionSetup(evaluateSweepReversal({
     executionCandles: candles5,
     contextCandles: candles1h,
     direction: "LONG",
@@ -674,8 +779,8 @@ async function loadBitcoinAnalysis() {
     contextTimeframe: "1h",
     namedLiquidity: shortModelLiquidity,
     mode: "BALANCED",
-  });
-  const model1ShortShort = evaluateSweepReversal({
+  }));
+  const model1ShortShort = toPublicDecisionSetup(evaluateSweepReversal({
     executionCandles: candles5,
     contextCandles: candles1h,
     direction: "SHORT",
@@ -683,9 +788,9 @@ async function loadBitcoinAnalysis() {
     contextTimeframe: "1h",
     namedLiquidity: shortModelLiquidity,
     mode: "BALANCED",
-  });
+  }));
   const model1ShortSelected = chooseModelDecision(model1ShortLong, model1ShortShort);
-  const model1SwingLong = evaluateSweepReversal({
+  const model1SwingLong = toPublicDecisionSetup(evaluateSweepReversal({
     executionCandles: candles1h,
     contextCandles: candles4h,
     direction: "LONG",
@@ -693,8 +798,8 @@ async function loadBitcoinAnalysis() {
     contextTimeframe: "4h",
     namedLiquidity: swingModelLiquidity,
     mode: "BALANCED",
-  });
-  const model1SwingShort = evaluateSweepReversal({
+  }));
+  const model1SwingShort = toPublicDecisionSetup(evaluateSweepReversal({
     executionCandles: candles1h,
     contextCandles: candles4h,
     direction: "SHORT",
@@ -702,7 +807,7 @@ async function loadBitcoinAnalysis() {
     contextTimeframe: "4h",
     namedLiquidity: swingModelLiquidity,
     mode: "BALANCED",
-  });
+  }));
   const model1SwingSelected = chooseModelDecision(model1SwingLong, model1SwingShort);
   const structure5 = detectMarketStructure(candles5, { eventLookback: 80 });
   const structure15 = detectMarketStructure(candles15, { eventLookback: 80 });
@@ -798,6 +903,12 @@ async function loadBitcoinAnalysis() {
   const primarySwingPlan = swingDirection === "LONG" ? swingLongPlan : swingDirection === "SHORT" ? swingShortPlan : swingLongScore >= swingShortScore ? swingLongPlan : swingShortPlan;
   const swingChecklist = swingChecklistFor(swingDirection, frames, { funding }, primarySwingPlan);
   const swingPassed = swingChecklist.filter((item) => item.pass).length;
+  const chart = buildChartPayload({
+    "5m": candles5,
+    "15m": candles15,
+    "1h": candles1h,
+    "4h": candles4h,
+  }, analysisNowSeconds);
   const status = direction === "WAIT"
     ? "HTF·구조·ICT 컨플루언스가 부족해 관망"
     : primaryPlan.status === "ENTRY_READY"
@@ -825,7 +936,8 @@ async function loadBitcoinAnalysis() {
     fundingRate: round(funding, 4),
     volume24h: round(ticker.volume_24h_quote || ticker.volume_24h_usd, 0),
     updatedAt: new Date().toISOString(),
-    candleClosedAt: new Date(candles5.at(-1).t * 1000).toISOString(),
+    candleClosedAt: chart.timeframes["5m"].analysisCutoff,
+    chart,
     direction,
     status,
     confidence: direction === "WAIT" ? Math.max(longScore, shortScore) : direction === "LONG" ? longScore : shortScore,
@@ -835,6 +947,12 @@ async function loadBitcoinAnalysis() {
       defaultMode: "BALANCED",
       lifecycle: ICT_V2_LIFECYCLE,
       executionEnabled: ICT_V2_LIFECYCLE === "ACTIVE",
+      pricePolicy: {
+        candidatePlan: "ANALYSIS_ONLY_VISIBLE",
+        executionPlan: "ACTIVE_ENTRY_READY_ONLY",
+        actualOrderData: "NOT_CONNECTED",
+        notice: "후보 레벨은 분석·시각화 근거이며, tradePlan과 execution.referencePrices만 실행 자격 충족 시 노출됩니다.",
+      },
       reviewStatus: `수정 후 승인된 v2 Architecture · ${ICT_V2_LIFECYCLE} 판단`,
       persistence: {
         status: "SCHEMA_READY_NOT_CONNECTED",
@@ -935,7 +1053,16 @@ async function loadBitcoinAnalysis() {
   };
 }
 
-export { buildTradePlan, buildSwingTradePlan, swingDirectionScore, swingChecklistFor };
+export {
+  buildChartPayload,
+  buildTradePlan,
+  buildSwingTradePlan,
+  completedCandles,
+  normalizeCandles,
+  swingDirectionScore,
+  swingChecklistFor,
+  toPublicDecisionSetup,
+};
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });

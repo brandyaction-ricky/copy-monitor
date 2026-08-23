@@ -14,6 +14,599 @@ const statusLabel = (value) => ({
 let bitcoinData = null;
 let selectedPlan = "long";
 let selectedStrategy = "shortTerm";
+let selectedChartTimeframe = "5m";
+
+const chartTimeframeLabels = { "5m": "5분봉", "15m": "15분봉", "1h": "1시간봉", "4h": "4시간봉" };
+const chartLayerState = { liquidity: true, structure: true, fvg: true, plan: true };
+const tradingChartRuntime = {
+  chart: null,
+  candleSeries: null,
+  volumeSeries: null,
+  markerApi: null,
+  levelSeries: [],
+  currentData: [],
+  lastTimeframe: null,
+  resizeObserver: null,
+  socket: null,
+  socketTimeframe: null,
+  socketGeneration: 0,
+  socketReconnectTimer: null,
+  socketPingTimer: null,
+  socketAckTimer: null,
+  socketRetryCount: 0,
+  liveCandles: {},
+};
+
+const chartKstFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function chartTimestamp(value) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return Math.floor(numeric > 1e12 ? numeric / 1000 : numeric);
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
+}
+
+function chartKstParts(value) {
+  const timestamp = chartTimestamp(value);
+  if (!timestamp) return null;
+  return Object.fromEntries(chartKstFormatter.formatToParts(new Date(timestamp * 1000)).map((part) => [part.type, part.value]));
+}
+
+function formatChartTickKst(value, tickMarkType) {
+  const parts = chartKstParts(value);
+  if (!parts) return "";
+  return Number(tickMarkType) <= 2 ? `${parts.month}/${parts.day}` : `${parts.hour}:${parts.minute}`;
+}
+
+function formatChartTimeKst(value) {
+  const parts = chartKstParts(value);
+  return parts ? `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute} KST` : "—";
+}
+
+function normalizedChartCandles(timeframe = selectedChartTimeframe) {
+  const rows = bitcoinData?.chart?.timeframes?.[timeframe]?.candles;
+  if (!Array.isArray(rows)) return [];
+  const unique = new Map();
+  rows.forEach((row) => {
+    const candle = {
+      time: chartTimestamp(row.t ?? row.time),
+      open: Number(row.o ?? row.open),
+      high: Number(row.h ?? row.high),
+      low: Number(row.l ?? row.low),
+      close: Number(row.c ?? row.close),
+      volume: Number(row.v ?? row.volume ?? 0),
+    };
+    if (candle.time == null || ![candle.open, candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite)) return;
+    unique.set(candle.time, candle);
+  });
+  return [...unique.values()].sort((a, b) => a.time - b.time);
+}
+
+function mergedChartCandles(timeframe, closedCandles) {
+  const latestClosedTime = closedCandles.at(-1)?.time || 0;
+  const liveMap = tradingChartRuntime.liveCandles[timeframe];
+  if (!liveMap) return closedCandles;
+  const live = [...liveMap.values()].filter((candle) => candle.time > latestClosedTime).sort((a, b) => a.time - b.time).slice(-3);
+  return [...closedCandles, ...live];
+}
+
+function chartCandleTimeText(time, prefix = "") {
+  if (!time) return "—";
+  const value = new Date(Number(time) * 1000).toLocaleString("ko-KR", {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul",
+  });
+  return `${prefix}${value} KST`;
+}
+
+function updateChartQuote(candle, live = false) {
+  if (!candle) return;
+  $b("btcChartPrice").textContent = money(candle.close);
+  $b("btcChartOhlc").textContent = `O ${numberText(candle.open)} · H ${numberText(candle.high)} · L ${numberText(candle.low)} · C ${numberText(candle.close)}`;
+  $b("btcChartHoverTime").textContent = chartCandleTimeText(candle.time, live ? "LIVE · " : "확정 · ");
+}
+
+function setChartStreamStatus(state, label) {
+  const target = $b("btcChartStream");
+  if (!target) return;
+  if (target.dataset.state === state && target.dataset.label === label) return;
+  target.dataset.state = state;
+  target.dataset.label = label;
+  target.className = state;
+  target.innerHTML = `<i></i>${escapeBtc(label)}`;
+}
+
+function currentChartPlanExecutable() {
+  const engine = currentDecisionPlan();
+  const plan = currentStrategy()?.plans?.[selectedPlan];
+  return Boolean(
+    bitcoinData?.decisionEngine?.executionEnabled
+    && engine?.hardFilterPassed
+    && engine?.state?.state === "ENTRY_READY"
+    && engine?.decision === plan?.direction
+    && engine?.tradePlan
+  );
+}
+
+function syncChartControls() {
+  document.querySelectorAll("[data-chart-tf]").forEach((button) => {
+    const active = button.dataset.chartTf === selectedChartTimeframe;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  document.querySelectorAll("[data-chart-layer]").forEach((button) => {
+    const active = Boolean(chartLayerState[button.dataset.chartLayer]);
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  $b("btcChartTimeframeLabel").textContent = chartTimeframeLabels[selectedChartTimeframe] || selectedChartTimeframe;
+  const change = Number(bitcoinData?.change24h);
+  $b("btcChartChange").textContent = Number.isFinite(change) ? `${change >= 0 ? "+" : ""}${numberText(change, 2)}%` : "—";
+  $b("btcChartChange").className = change >= 0 ? "positive" : "negative";
+  const lifecycle = bitcoinData?.decisionEngine?.lifecycle || (bitcoinData?.decisionEngine?.executionEnabled ? "ACTIVE" : "SHADOW");
+  const engine = currentDecisionPlan();
+  const executionTimeframe = engine?.executionTimeframe || (selectedStrategy === "swing" ? "1h" : "5m");
+  const planState = $b("btcChartPlanState");
+  if (executionTimeframe !== selectedChartTimeframe) {
+    planState.textContent = `컨텍스트 뷰 · 실행 오버레이 ${chartTimeframeLabels[executionTimeframe] || executionTimeframe}`;
+    planState.className = "context";
+  } else if (currentChartPlanExecutable()) {
+    planState.textContent = `ACTIVE · ${engine.decision} 실행 가격 표시`;
+    planState.className = engine.decision === "LONG" ? "long" : "short";
+  } else if (engine?.candidatePlan) {
+    planState.textContent = `${lifecycle} · 분석 후보 · 주문 비활성`;
+    planState.className = "candidate";
+  } else {
+    planState.textContent = `${lifecycle} · 분석 후보 없음 · 주문 비활성`;
+    planState.className = "locked";
+  }
+}
+
+function showChartFallback(title, detail) {
+  const fallback = $b("btcChartFallback");
+  if (!fallback) return;
+  fallback.hidden = false;
+  fallback.innerHTML = `<strong>${escapeBtc(title)}</strong><span>${escapeBtc(detail)}</span>`;
+}
+
+function hideChartFallback() {
+  const fallback = $b("btcChartFallback");
+  if (fallback) fallback.hidden = true;
+}
+
+function addTradingChartSeries(chart, definition, options, legacyMethod) {
+  if (typeof chart.addSeries === "function" && definition) return chart.addSeries(definition, options);
+  if (typeof chart[legacyMethod] === "function") return chart[legacyMethod](options);
+  throw new Error("지원되는 차트 시리즈 API를 찾지 못했습니다.");
+}
+
+function ensureTradingChart() {
+  if (tradingChartRuntime.chart) return true;
+  const library = window.LightweightCharts;
+  const container = $b("btcTradingChart");
+  if (!library || !container) {
+    showChartFallback("차트 모듈을 불러오지 못했습니다.", "분석 데이터는 계속 갱신됩니다. 잠시 후 새로고침해 주세요.");
+    setChartStreamStatus("error", "차트 모듈 오류");
+    return false;
+  }
+  try {
+    const chart = library.createChart(container, {
+      width: Math.max(1, Math.floor(container.clientWidth)),
+      height: Math.max(container.clientHeight, 360),
+      autoSize: false,
+      layout: { background: { type: "solid", color: "#090d11" }, textColor: "#788590", fontFamily: "Inter, Pretendard, sans-serif", fontSize: 11, attributionLogo: true },
+      grid: { vertLines: { color: "rgba(40, 49, 57, .45)" }, horzLines: { color: "rgba(40, 49, 57, .45)" } },
+      rightPriceScale: { borderColor: "#253039", minimumWidth: 70, scaleMargins: { top: .08, bottom: .22 } },
+      timeScale: { borderColor: "#253039", timeVisible: true, secondsVisible: false, rightOffset: 5, barSpacing: 7, minBarSpacing: 2, fixLeftEdge: false, tickMarkFormatter: formatChartTickKst },
+      crosshair: {
+        mode: library.CrosshairMode?.Normal ?? 0,
+        vertLine: { color: "rgba(181, 195, 205, .34)", labelBackgroundColor: "#26323a" },
+        horzLine: { color: "rgba(181, 195, 205, .34)", labelBackgroundColor: "#26323a" },
+      },
+      localization: { locale: "ko-KR", timeFormatter: formatChartTimeKst, priceFormatter: (price) => Number(price).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { axisPressedMouseMove: false, mouseWheel: true, pinch: true },
+    });
+    const candleSeries = addTradingChartSeries(chart, library.CandlestickSeries, {
+      upColor: "#2fd6ad", downColor: "#f05c70", borderUpColor: "#2fd6ad", borderDownColor: "#f05c70", wickUpColor: "#70ddc2", wickDownColor: "#ed8190",
+      priceLineVisible: true, priceLineColor: "#60717b", priceLineWidth: 1, lastValueVisible: true,
+    }, "addCandlestickSeries");
+    const volumeSeries = addTradingChartSeries(chart, library.HistogramSeries, {
+      priceFormat: { type: "volume" }, priceScaleId: "", lastValueVisible: false, priceLineVisible: false,
+    }, "addHistogramSeries");
+    if (typeof volumeSeries.priceScale === "function") volumeSeries.priceScale().applyOptions({ scaleMargins: { top: .82, bottom: 0 } });
+    else chart.priceScale("").applyOptions({ scaleMargins: { top: .82, bottom: 0 } });
+    chart.subscribeCrosshairMove((parameter) => {
+      const point = parameter?.seriesData?.get?.(candleSeries);
+      if (point && parameter.time) {
+        updateChartQuote({ ...point, time: chartTimestamp(parameter.time), volume: 0 }, false);
+        $b("btcChartHoverTime").textContent = chartCandleTimeText(chartTimestamp(parameter.time));
+        return;
+      }
+      const latest = tradingChartRuntime.currentData.at(-1);
+      if (latest) updateChartQuote(latest, latest.time > (normalizedChartCandles().at(-1)?.time || 0));
+    });
+    tradingChartRuntime.chart = chart;
+    tradingChartRuntime.candleSeries = candleSeries;
+    tradingChartRuntime.volumeSeries = volumeSeries;
+    if (window.ResizeObserver) {
+      tradingChartRuntime.resizeObserver = new ResizeObserver(() => {
+        chart.applyOptions({ width: Math.max(1, Math.floor(container.clientWidth)), height: Math.max(container.clientHeight, 360) });
+      });
+      tradingChartRuntime.resizeObserver.observe(container);
+    }
+    hideChartFallback();
+    return true;
+  } catch (error) {
+    showChartFallback("차트를 초기화하지 못했습니다.", error.message || "브라우저에서 차트 렌더링을 지원하지 않습니다.");
+    setChartStreamStatus("error", "차트 초기화 오류");
+    return false;
+  }
+}
+
+function clearChartLevelSeries() {
+  const chart = tradingChartRuntime.chart;
+  if (!chart) return;
+  tradingChartRuntime.levelSeries.forEach((series) => {
+    try { chart.removeSeries(series); } catch (_) { /* 이미 제거된 보조 시리즈는 무시 */ }
+  });
+  tradingChartRuntime.levelSeries = [];
+}
+
+function sourceBarTime(value, candles) {
+  const target = chartTimestamp(value);
+  if (!target || !candles.length) return null;
+  const spacing = candles.length > 1 ? Math.max(1, candles.at(-1).time - candles.at(-2).time) : 300;
+  if (target < candles[0].time - spacing || target > candles.at(-1).time + spacing * 2) return null;
+  let result = null;
+  for (const candle of candles) {
+    // 엔진 feature 시각은 확정 캔들의 close time이므로 같은 시각에 열린
+    // 다음 캔들이 아니라 바로 직전(신호) 캔들에 마커를 붙인다.
+    if (candle.time >= target) break;
+    result = candle.time;
+  }
+  return result ?? candles[0].time;
+}
+
+function availabilityBarTime(value, candles) {
+  const target = chartTimestamp(value);
+  if (!target || !candles.length) return null;
+  const spacing = candles.length > 1 ? Math.max(1, candles.at(-1).time - candles.at(-2).time) : 300;
+  if (target <= candles[0].time) return candles[0].time;
+  for (const candle of candles) {
+    if (candle.time >= target) return candle.time;
+  }
+  return target <= candles.at(-1).time + spacing ? target : null;
+}
+
+function chartSegmentEnd(candles) {
+  if (!candles.length) return null;
+  const configured = Number(bitcoinData?.chart?.timeframes?.[selectedChartTimeframe]?.intervalSeconds);
+  const observed = candles.length > 1 ? candles.at(-1).time - candles.at(-2).time : 0;
+  return candles.at(-1).time + Math.max(1, configured || observed || 300);
+}
+
+function addBoundedLevelSeries({ price, startTime, candles, color, lineWidth = 1, lineStyle, title = "", axisLabelVisible = false }) {
+  const chart = tradingChartRuntime.chart;
+  const library = window.LightweightCharts;
+  const numericPrice = Number(price);
+  const endTime = chartSegmentEnd(candles);
+  if (!chart || !library || !Number.isFinite(numericPrice) || !startTime || !endTime || startTime > endTime) return null;
+  const intervalSeconds = Math.max(1, Number(bitcoinData?.chart?.timeframes?.[selectedChartTimeframe]?.intervalSeconds) || 300);
+  const visibleEndTime = startTime === endTime ? endTime + intervalSeconds : endTime;
+  try {
+    const series = addTradingChartSeries(chart, library.LineSeries, {
+      color,
+      lineWidth,
+      lineStyle,
+      title,
+      lastValueVisible: axisLabelVisible,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+      autoscaleInfoProvider: () => null,
+    }, "addLineSeries");
+    series.setData([{ time: startTime, value: numericPrice }, { time: visibleEndTime, value: numericPrice }]);
+    tradingChartRuntime.levelSeries.push(series);
+    return series;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setChartMarkers(markers) {
+  const library = window.LightweightCharts;
+  const series = tradingChartRuntime.candleSeries;
+  if (!series) return;
+  const sorted = markers.filter((marker) => marker.time != null).sort((a, b) => Number(a.time) - Number(b.time));
+  try {
+    if (tradingChartRuntime.markerApi?.setMarkers) {
+      tradingChartRuntime.markerApi.setMarkers(sorted);
+    } else if (typeof library?.createSeriesMarkers === "function") {
+      tradingChartRuntime.markerApi = library.createSeriesMarkers(series, sorted);
+    } else if (typeof series.setMarkers === "function") {
+      series.setMarkers(sorted);
+    }
+  } catch (_) { /* 마커 플러그인 실패 시 캔들 렌더링은 유지 */ }
+}
+
+function markerForFeature(feature, candles, { text, color, direction, time }) {
+  if (!feature) return null;
+  const markerTime = sourceBarTime(feature[time] || feature.confirmedAt || feature.detectedAt, candles);
+  if (!markerTime) return null;
+  const long = direction === "LONG";
+  return {
+    time: markerTime,
+    position: long ? "belowBar" : "aboveBar",
+    color,
+    shape: long ? "arrowUp" : "arrowDown",
+    text,
+    size: 1,
+  };
+}
+
+function applyChartAnnotations(candles) {
+  clearChartLevelSeries();
+  const engine = currentDecisionPlan();
+  const library = window.LightweightCharts;
+  const dashed = library?.LineStyle?.Dashed ?? 2;
+  const dotted = library?.LineStyle?.Dotted ?? 1;
+  const solid = library?.LineStyle?.Solid ?? 0;
+  const direction = engine?.direction || selectedPlan.toUpperCase();
+  const latestPrice = candles.at(-1)?.close || Number(bitcoinData?.price) || 0;
+  const executionTimeframe = engine?.executionTimeframe || (selectedStrategy === "swing" ? "1h" : "5m");
+  const overlayAligned = Boolean(engine && (
+    engine?.executionTimeframe === selectedChartTimeframe
+    || (!engine.executionTimeframe && executionTimeframe === selectedChartTimeframe)
+  ));
+  const markers = [];
+
+  if (overlayAligned && chartLayerState.liquidity && engine?.liquidity?.levels?.length) {
+    [...engine.liquidity.levels]
+      .filter((level) => Number.isFinite(Number(level.price)))
+      .sort((a, b) => Math.abs(Number(a.price) - latestPrice) - Math.abs(Number(b.price) - latestPrice))
+      .slice(0, 3)
+      .forEach((level) => {
+        const availableAt = level.confirmedAt || level.detectedAt || level.formedAt;
+        const startTime = availableAt ? availabilityBarTime(availableAt, candles) : candles.at(-1)?.time;
+        addBoundedLevelSeries({
+          price: level.price,
+          startTime,
+          candles,
+          color: level.side === "BUY_SIDE" ? "rgba(240, 92, 112, .62)" : "rgba(47, 214, 173, .62)",
+          lineWidth: 1,
+          lineStyle: dashed,
+          axisLabelVisible: true,
+          title: `유동성 · ${String(level.liquidityType || level.label || level.side || "LIQ").replaceAll("_", " ")}`,
+        });
+      });
+  }
+
+  if (overlayAligned && chartLayerState.structure && engine) {
+    const featureMarkers = [
+      markerForFeature(engine.sweep, candles, { text: "Sweep", color: "#f5b342", direction, time: "raidAt" }),
+      markerForFeature(engine.cisd, candles, { text: "CISD", color: "#56b6ff", direction, time: "confirmedAt" }),
+      markerForFeature(engine.displacement, candles, { text: "Displacement", color: "#b98cff", direction, time: "confirmedAt" }),
+      markerForFeature(engine.internalBreak, candles, { text: "Internal Break", color: "#42ddbb", direction, time: "confirmedAt" }),
+      markerForFeature(engine.mss, candles, { text: "MSS", color: "#ff7f96", direction, time: "confirmedAt" }),
+    ];
+    markers.push(...featureMarkers.filter(Boolean));
+  }
+
+  if (overlayAligned && chartLayerState.fvg && engine?.fvg) {
+    const fvg = engine.fvg;
+    const zoneColor = direction === "LONG" ? "rgba(47, 214, 173, .65)" : "rgba(240, 92, 112, .65)";
+    const startTime = availabilityBarTime(fvg.confirmedAt, candles);
+    addBoundedLevelSeries({ price: fvg.low, startTime, candles, color: zoneColor, lineWidth: 1, lineStyle: dotted, title: "FVG 하단", axisLabelVisible: false });
+    addBoundedLevelSeries({ price: fvg.high, startTime, candles, color: zoneColor, lineWidth: 1, lineStyle: dotted, title: "FVG 상단", axisLabelVisible: false });
+    addBoundedLevelSeries({ price: fvg.consequentEncroachment, startTime, candles, color: zoneColor, lineWidth: 1, lineStyle: dashed, title: "FVG CE · 근거", axisLabelVisible: false });
+    const fvgMarker = markerForFeature(fvg, candles, { text: "FVG", color: zoneColor, direction, time: "confirmedAt" });
+    if (fvgMarker) markers.push({ ...fvgMarker, shape: "circle" });
+  }
+
+  const executable = overlayAligned && currentChartPlanExecutable();
+  const visiblePlan = executable ? engine?.tradePlan : engine?.candidatePlan;
+  if (overlayAligned && chartLayerState.plan && visiblePlan) {
+    const candidate = !executable;
+    const prefix = candidate ? "후보" : "ACTIVE";
+    const planStyle = candidate ? dotted : solid;
+    const planColor = direction === "LONG" ? "#2fd6ad" : "#f05c70";
+    const startTime = availabilityBarTime(visiblePlan.validFrom || engine.generatedAt, candles);
+    addBoundedLevelSeries({ price: visiblePlan.entry, startTime, candles, color: planColor, lineWidth: candidate ? 1 : 2, lineStyle: planStyle, axisLabelVisible: true, title: `${prefix} 진입${candidate ? " · 주문 불가" : ""}` });
+    addBoundedLevelSeries({ price: visiblePlan.stop, startTime, candles, color: "#ff5e73", lineWidth: candidate ? 1 : 2, lineStyle: planStyle, axisLabelVisible: true, title: `${prefix} SL${candidate ? " · 주문 불가" : ""}` });
+    (visiblePlan.targets || []).slice(0, 3).forEach((target, index) => addBoundedLevelSeries({
+      price: target.price,
+      startTime,
+      candles,
+      color: "#4ee5b8",
+      lineWidth: candidate || index ? 1 : 2,
+      lineStyle: candidate ? dotted : index ? dashed : solid,
+      axisLabelVisible: true,
+      title: `${prefix} TP${index + 1} · ${numberText(target.rr, 1)}R${candidate ? " · 주문 불가" : ""}`,
+    }));
+  }
+
+  setChartMarkers(markers);
+  const annotationStatus = $b("btcChartAnnotationStatus");
+  if (!engine) {
+    annotationStatus.textContent = "현재 방향의 엔진 근거 없음";
+  } else if (!overlayAligned) {
+    annotationStatus.textContent = `컨텍스트 뷰 · 실행 오버레이는 ${chartTimeframeLabels[executionTimeframe] || executionTimeframe}에서 표시`;
+  } else if (executable) {
+    annotationStatus.textContent = `${direction} · ACTIVE 실행 플랜 표시`;
+  } else if (engine.candidatePlan) {
+    annotationStatus.textContent = `${direction} · SHADOW 분석 후보(점선) · 주문 비활성`;
+  } else {
+    annotationStatus.textContent = `${direction} · SHADOW 근거만 표시 · 분석 후보 없음`;
+  }
+}
+
+function disconnectTradingChartSocket() {
+  tradingChartRuntime.socketGeneration += 1;
+  clearTimeout(tradingChartRuntime.socketReconnectTimer);
+  clearInterval(tradingChartRuntime.socketPingTimer);
+  clearTimeout(tradingChartRuntime.socketAckTimer);
+  tradingChartRuntime.socketReconnectTimer = null;
+  tradingChartRuntime.socketPingTimer = null;
+  tradingChartRuntime.socketAckTimer = null;
+  const socket = tradingChartRuntime.socket;
+  tradingChartRuntime.socket = null;
+  tradingChartRuntime.socketTimeframe = null;
+  if (socket && socket.readyState < 2) {
+    try { socket.close(1000, "timeframe changed"); } catch (_) { /* 종료 중인 소켓은 무시 */ }
+  }
+}
+
+function updateLiveChartCandle(row, timeframe) {
+  const candle = {
+    time: chartTimestamp(row.t),
+    open: Number(row.o),
+    high: Number(row.h),
+    low: Number(row.l),
+    close: Number(row.c),
+    volume: Number(row.v ?? 0),
+  };
+  if (candle.time == null || ![candle.open, candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite)) return;
+  const closedCandles = normalizedChartCandles(timeframe);
+  const latestClosed = closedCandles.at(-1)?.time || 0;
+  if (candle.time <= latestClosed) return;
+  if (!tradingChartRuntime.liveCandles[timeframe]) tradingChartRuntime.liveCandles[timeframe] = new Map();
+  const liveMap = tradingChartRuntime.liveCandles[timeframe];
+  const isNewLiveBar = !liveMap.has(candle.time);
+  liveMap.set(candle.time, candle);
+  [...liveMap.keys()].filter((time) => time <= latestClosed).forEach((time) => liveMap.delete(time));
+  while (liveMap.size > 3) liveMap.delete([...liveMap.keys()].sort((a, b) => a - b)[0]);
+  if (timeframe !== selectedChartTimeframe || !tradingChartRuntime.candleSeries) return;
+  tradingChartRuntime.candleSeries.update({ time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close });
+  tradingChartRuntime.volumeSeries.update({ time: candle.time, value: candle.volume, color: candle.close >= candle.open ? "rgba(47, 214, 173, .32)" : "rgba(240, 92, 112, .32)" });
+  tradingChartRuntime.currentData = mergedChartCandles(timeframe, closedCandles);
+  updateChartQuote(candle, true);
+  if (isNewLiveBar) applyChartAnnotations(tradingChartRuntime.currentData);
+  setChartStreamStatus("live", "LIVE · 실시간 캔들");
+}
+
+function connectTradingChartSocket() {
+  if (document.hidden) return;
+  if (!bitcoinData?.chart?.timeframes?.[selectedChartTimeframe]) return;
+  if (typeof window.WebSocket !== "function") {
+    setChartStreamStatus("rest", "REST · 30초 갱신");
+    return;
+  }
+  if (tradingChartRuntime.socket && tradingChartRuntime.socketTimeframe === selectedChartTimeframe && tradingChartRuntime.socket.readyState < 2) return;
+  disconnectTradingChartSocket();
+  const timeframe = selectedChartTimeframe;
+  const generation = ++tradingChartRuntime.socketGeneration;
+  setChartStreamStatus("connecting", "LIVE 연결 중");
+  try {
+    const socket = new WebSocket("wss://fx-ws.gateio.ws/v4/ws/usdt");
+    let acknowledged = false;
+    let subscriptionRejected = false;
+    const closeToRest = ({ retry }) => {
+      if (generation !== tradingChartRuntime.socketGeneration) return;
+      subscriptionRejected = !retry;
+      clearTimeout(tradingChartRuntime.socketAckTimer);
+      tradingChartRuntime.socketAckTimer = null;
+      setChartStreamStatus("rest", "REST · 30초 갱신");
+      if (socket.readyState < 2) {
+        try { socket.close(1000, "subscribe failed"); } catch (_) { /* 폴백 상태 유지 */ }
+      }
+    };
+    const rejectToRest = () => closeToRest({ retry: false });
+    const timeoutToRest = () => closeToRest({ retry: true });
+    tradingChartRuntime.socket = socket;
+    tradingChartRuntime.socketTimeframe = timeframe;
+    socket.addEventListener("open", () => {
+      if (generation !== tradingChartRuntime.socketGeneration) return;
+      socket.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: "futures.candlesticks", event: "subscribe", payload: [timeframe, "BTC_USDT"] }));
+      setChartStreamStatus("connecting", "LIVE 구독 확인 중");
+      tradingChartRuntime.socketAckTimer = setTimeout(timeoutToRest, 8_000);
+      tradingChartRuntime.socketPingTimer = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ time: Math.floor(Date.now() / 1000), channel: "futures.ping" }));
+      }, 20_000);
+    });
+    socket.addEventListener("message", (event) => {
+      if (generation !== tradingChartRuntime.socketGeneration) return;
+      let message;
+      try { message = JSON.parse(event.data); } catch (_) { return; }
+      if (message.error) {
+        rejectToRest();
+        return;
+      }
+      if (message.channel === "futures.candlesticks" && message.event === "subscribe") {
+        const status = String(message.result?.status || "success").toLowerCase();
+        if (!["success", "ok"].includes(status)) {
+          rejectToRest();
+          return;
+        }
+        acknowledged = true;
+        tradingChartRuntime.socketRetryCount = 0;
+        clearTimeout(tradingChartRuntime.socketAckTimer);
+        tradingChartRuntime.socketAckTimer = null;
+        setChartStreamStatus("live", "LIVE · 연결됨");
+        return;
+      }
+      if (!acknowledged || message.channel !== "futures.candlesticks" || message.event !== "update") return;
+      const rows = Array.isArray(message.result) ? message.result : [message.result].filter(Boolean);
+      rows.forEach((row) => {
+        if (row.n && !String(row.n).startsWith(`${timeframe}_`)) return;
+        updateLiveChartCandle(row, timeframe);
+      });
+    });
+    socket.addEventListener("error", () => {
+      if (generation === tradingChartRuntime.socketGeneration) setChartStreamStatus("rest", "REST · 30초 갱신");
+    });
+    socket.addEventListener("close", () => {
+      if (generation !== tradingChartRuntime.socketGeneration) return;
+      clearInterval(tradingChartRuntime.socketPingTimer);
+      clearTimeout(tradingChartRuntime.socketAckTimer);
+      tradingChartRuntime.socketPingTimer = null;
+      tradingChartRuntime.socketAckTimer = null;
+      tradingChartRuntime.socket = null;
+      tradingChartRuntime.socketTimeframe = null;
+      setChartStreamStatus("rest", "REST · 30초 갱신");
+      if (!document.hidden && !subscriptionRejected) {
+        const retryDelay = Math.min(30_000, 1_000 * (2 ** Math.min(tradingChartRuntime.socketRetryCount, 5)));
+        tradingChartRuntime.socketRetryCount += 1;
+        tradingChartRuntime.socketReconnectTimer = setTimeout(connectTradingChartSocket, retryDelay);
+      }
+    });
+  } catch (_) {
+    setChartStreamStatus("rest", "REST · 30초 갱신");
+  }
+}
+
+function renderTradingChart({ fit = false } = {}) {
+  syncChartControls();
+  const source = bitcoinData?.chart?.timeframes?.[selectedChartTimeframe];
+  const closedCandles = normalizedChartCandles();
+  if (!source || !closedCandles.length) {
+    showChartFallback("차트 데이터를 불러오는 중입니다.", "Gate.io 확정 캔들 데이터가 준비되면 자동으로 표시됩니다.");
+    setChartStreamStatus("rest", "REST · 데이터 대기");
+    return;
+  }
+  if (!ensureTradingChart()) return;
+  hideChartFallback();
+  const timeframeChanged = tradingChartRuntime.lastTimeframe !== selectedChartTimeframe;
+  const candles = mergedChartCandles(selectedChartTimeframe, closedCandles);
+  tradingChartRuntime.currentData = candles;
+  tradingChartRuntime.candleSeries.setData(candles.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
+  tradingChartRuntime.volumeSeries.setData(candles.map((candle) => ({
+    time: candle.time,
+    value: candle.volume,
+    color: candle.close >= candle.open ? "rgba(47, 214, 173, .30)" : "rgba(240, 92, 112, .30)",
+  })));
+  tradingChartRuntime.lastTimeframe = selectedChartTimeframe;
+  updateChartQuote(candles.at(-1), candles.at(-1).time > closedCandles.at(-1).time);
+  applyChartAnnotations(candles);
+  if (fit || timeframeChanged) tradingChartRuntime.chart.timeScale().fitContent();
+  connectTradingChartSocket();
+}
 
 function strategies() {
   if (bitcoinData?.strategies) return bitcoinData.strategies;
@@ -101,7 +694,9 @@ function renderDecisionEngine() {
   const decisionTone = engine.decision === "LONG" ? "long" : engine.decision === "SHORT" ? "short" : engine.decision === "NO_TRADE" ? "blocked" : "wait";
   $b("btcEngineModel").textContent = engine.model || "MODEL_1_SWEEP_REVERSAL";
   const executionEnabled = Boolean(bitcoinData?.decisionEngine?.executionEnabled);
-  $b("btcEngineMode").textContent = `${engine.mode || "BALANCED"} · ${executionEnabled ? "ACTIVE" : "SHADOW"}`;
+  const lifecycle = bitcoinData?.decisionEngine?.lifecycle || (executionEnabled ? "ACTIVE" : "SHADOW");
+  $b("btcEngineLifecycle").textContent = `V2 ${lifecycle}`;
+  $b("btcEngineMode").textContent = `${engine.mode || "BALANCED"} · ${lifecycle}`;
   $b("btcEngineDecision").textContent = engine.decision;
   $b("btcEngineDecision").className = decisionTone;
   $b("btcEngineState").textContent = engine.state?.stateLabel || engine.state?.state || "—";
@@ -147,7 +742,7 @@ function renderPlan() {
         <div><div class="btc-plan-labels"><span class="btc-plan-direction ${tone}">${plan.direction}</span><span>${escapeBtc(strategy.label)} · MODEL 1 후보</span></div><h3>실행 잠금</h3><p>현재 ${escapeBtc(engine?.decision || "WAIT")} · ${escapeBtc(engine?.state?.stateLabel || "조건 확인 중")} · Setup Score ${engine?.score ?? 0}/100</p></div>
         <strong class="btc-locked-value">조건 충족 전 비활성</strong>
       </div>
-      <div class="btc-plan-lock"><b>진입·손절·익절 미표시</b><p>Sweep → CISD → Displacement → ${engine?.mode === "CONSERVATIVE" ? "MSS" : "Internal Break"} → FVG 첫 Retrace → 기존 유동성 TP 2R 이상이 모두 확인된 뒤에만 가격을 활성화합니다.</p></div>
+      <div class="btc-plan-lock"><b>실행 가격 잠금 · 차트 점선은 주문 불가 후보</b><p>차트의 점선 진입·SL·TP는 분석용 candidatePlan입니다. Sweep → CISD → Displacement → ${engine?.mode === "CONSERVATIVE" ? "MSS" : "Internal Break"} → FVG 첫 Retrace → 기존 유동성 TP 2R 이상이 모두 확인된 ACTIVE 상태에서만 실선 실행 가격으로 전환됩니다.</p></div>
       <section class="btc-confirm-section"><h4>다음 확인 조건</h4><p>${escapeBtc(engine?.state?.nextCondition || "새 셋업 대기")}</p></section>
       <section class="btc-plan-basis"><h4>미충족 Hard Filter</h4><div>${escapeBtc(missing).split(" · ").map((item) => `<span>${item}</span>`).join("")}</div></section>
       <div class="btc-invalidation"><div><small>Historical Edge</small><p>N/A · 표본 0 · Walk-forward 미보정</p></div><div><small>실행 정책</small><p>확정 신호 이후 다음 캔들 시가 또는 확인 후 지정가</p></div></div>`;
@@ -280,6 +875,7 @@ function renderSelectedStrategy() {
   renderPlan();
   renderChecklist();
   renderMarketData();
+  renderTradingChart();
 }
 
 function renderBitcoin() {
@@ -311,6 +907,8 @@ async function loadBitcoin(showToast = false) {
     $b("btcMarketStatus").textContent = "연결 오류";
     $b("btcStatus").textContent = "실시간 분석을 불러오지 못했습니다.";
     $b("btcExecutionRule").textContent = error.message;
+    showChartFallback("차트 데이터를 불러오지 못했습니다.", "시장 데이터 연결을 확인한 뒤 새로고침해 주세요.");
+    setChartStreamStatus("error", "시장 데이터 연결 오류");
     toast("데이터 연결에 실패했습니다. 새로고침으로 다시 시도해 주세요.");
   } finally {
     button.disabled = false;
@@ -328,10 +926,12 @@ document.querySelectorAll("[data-plan]").forEach((button) => button.addEventList
   renderPlan();
   renderChecklist();
   renderMarketData();
+  renderTradingChart();
 }));
 document.querySelectorAll("[data-strategy]").forEach((button) => button.addEventListener("click", () => {
   if (!bitcoinData || !strategies()[button.dataset.strategy]) return;
   selectedStrategy = button.dataset.strategy;
+  selectedChartTimeframe = selectedStrategy === "swing" ? "1h" : "5m";
   selectedPlan = currentStrategy().primaryPlan === "SHORT" ? "short" : "long";
   document.querySelectorAll("[data-plan]").forEach((item) => {
     const active = item.dataset.plan === selectedPlan;
@@ -340,9 +940,36 @@ document.querySelectorAll("[data-strategy]").forEach((button) => button.addEvent
   });
   renderSelectedStrategy();
 }));
+document.querySelectorAll("[data-chart-tf]").forEach((button) => button.addEventListener("click", () => {
+  const timeframe = button.dataset.chartTf;
+  if (!bitcoinData?.chart?.timeframes?.[timeframe] || timeframe === selectedChartTimeframe) return;
+  selectedChartTimeframe = timeframe;
+  renderTradingChart({ fit: true });
+}));
+document.querySelectorAll("[data-chart-layer]").forEach((button) => button.addEventListener("click", () => {
+  if (!bitcoinData) return;
+  const layer = button.dataset.chartLayer;
+  chartLayerState[layer] = !chartLayerState[layer];
+  syncChartControls();
+  if (tradingChartRuntime.currentData.length) applyChartAnnotations(tradingChartRuntime.currentData);
+}));
 $b("bitcoinRefresh").addEventListener("click", () => loadBitcoin(true));
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) disconnectTradingChartSocket();
+  else if (bitcoinData) {
+    loadBitcoin(false);
+    connectTradingChartSocket();
+  }
+});
+window.addEventListener("beforeunload", () => {
+  disconnectTradingChartSocket();
+  tradingChartRuntime.resizeObserver?.disconnect();
+  tradingChartRuntime.chart?.remove();
+});
 setInterval(() => {
   $b("bitcoinClock").textContent = new Date().toLocaleString("ko-KR", { hour12:false, timeZone:"Asia/Seoul" }) + " KST";
 }, 1000);
 loadBitcoin();
-setInterval(() => loadBitcoin(false), 30_000);
+setInterval(() => {
+  if (!document.hidden) loadBitcoin(false);
+}, 30_000);

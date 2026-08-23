@@ -10,9 +10,11 @@ GateScope 기반 Gate.io 무기한 선물 포지션 대시보드입니다.
 - 실제 주문 실행 기능은 포함하지 않음
 - ICT Decision Engine v2를 기존 엔진과 병렬 Shadow 판단으로 운영 (`ICT_V2_LIFECYCLE=SHADOW` 기본)
 - `MODEL_1_SWEEP_REVERSAL`: HTF → Location → Liquidity → Sweep → CISD → Displacement → Internal Break → FVG Retrace
-- Hard Filter 통과 전에는 진입·손절·익절 가격을 사용자 화면에서 잠금
+- Hard Filter 통과 전에는 주문 실행 가격을 잠그고, candidatePlan의 Entry·SL·TP는 주문 불가 분석 후보 점선으로만 표시
 - Historical Edge는 Walk-forward 백테스트 전까지 `N/A`로 표시
-- `ACTIVE` 승격 전에는 v2 조건이 모두 충족되어도 실행 가격을 잠금
+- `ACTIVE` 승격 전에는 v2 조건이 모두 충족되어도 주문 실행과 실선 실행 가격은 잠금
+- TradingView Lightweight Charts 5.2.1로 Gate.io BTC_USDT 5m·15m·1h·4h 캔들을 시각화
+- Gate.io Public WebSocket은 진행 중 캔들만 갱신하고, 엔진 판단은 확정봉에서만 갱신
 
 ## ICT Decision Engine v2
 
@@ -26,6 +28,16 @@ GateScope 기반 Gate.io 무기한 선물 포지션 대시보드입니다.
 - 운영 DB는 아직 연결하지 않았습니다. 검수된 additive schema는 `db/migrations/001_ict_decision_engine_v2.sql`에 있으며 Supabase Preview Branch 검증 후 별도 승인이 필요합니다.
 
 상세 검수 결과는 `docs/ict-decision-engine-review.md`를 참고하세요.
+
+## 실시간 트레이딩 차트
+
+- 과거·확정 캔들: `/api/bitcoin`의 `chart.timeframes` 스냅샷
+- 진행 중 캔들: 브라우저의 Gate.io Public WebSocket 읽기 전용 구독
+- 실행 오버레이: 엔진의 `executionTimeframe`과 현재 차트 시간대가 같을 때만 표시
+- `SHADOW`: 유동성·Sweep·CISD·Displacement·구조·FVG 근거와 candidatePlan의 Entry·SL·TP를 점선으로 표시. 모두 분석 후보이며 주문 불가
+- `ACTIVE`: Hard Filter와 `ENTRY_READY`를 모두 통과한 tradePlan의 Entry·SL·TP만 실선 실행 가격으로 표시
+
+차트 라이브러리는 `vendor/lightweight-charts`에 버전·라이선스·고지와 함께 고정되어 있습니다. 실제 주문을 생성하거나 변경하는 코드는 포함하지 않습니다.
 
 ## 환경 변수
 

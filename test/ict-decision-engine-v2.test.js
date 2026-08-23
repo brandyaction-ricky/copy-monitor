@@ -135,11 +135,14 @@ test("기존 유동성 TP가 2R을 못 만들면 합성 목표를 만들지 않�
   assert.ok(decision.missingConditions.includes("Minimum R:R"));
 });
 
-test("트레이딩 UI는 Hard Filter 통과 전 진입·손절·익절을 잠근다", () => {
+test("트레이딩 UI는 Hard Filter 통과 전 주문 실행 가격을 잠그고 분석 후보를 분리한다", () => {
   const html = fs.readFileSync(new URL("../bitcoin.html", import.meta.url), "utf8");
   const script = fs.readFileSync(new URL("../bitcoin.js", import.meta.url), "utf8");
   assert.match(html, /현재 셋업 진행 상태/);
-  assert.match(script, /진입·손절·익절 미표시/);
+  assert.match(script, /실행 가격 잠금 · 차트 점선은 주문 불가 후보/);
+  assert.match(script, /차트의 점선 진입·SL·TP는 분석용 candidatePlan/);
+  assert.match(script, /visiblePlan = executable \? engine\?\.tradePlan : engine\?\.candidatePlan/);
+  assert.match(script, /candidate \? dotted : solid/);
   assert.match(script, /Historical Edge/);
   assert.match(script, /engine\?\.hardFilterPassed/);
 });

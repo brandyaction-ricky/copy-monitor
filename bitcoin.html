@@ -64,9 +64,68 @@
           </button>
         </section>
 
+        <section class="panel btc-chart-panel" aria-label="BTC 실시간 분석 차트">
+          <div class="btc-chart-head">
+            <div>
+              <p class="eyebrow">GATE.IO · BTC_USDT PERPETUAL</p>
+              <div class="btc-chart-title-row">
+                <h2>실시간 차트와 ICT 셋업</h2>
+                <strong id="btcChartPrice">—</strong>
+                <span id="btcChartChange">—</span>
+              </div>
+              <p>실시간 캔들은 관찰용이며 엔진 판단은 확정된 캔들에서만 갱신됩니다.</p>
+            </div>
+            <div class="btc-chart-statuses">
+              <span class="closed"><i></i>판단 · 확정봉 전용</span>
+              <span id="btcChartStream" class="rest" role="status" aria-live="polite" aria-atomic="true"><i></i>REST · 30초 갱신</span>
+            </div>
+          </div>
+
+          <div class="btc-chart-toolbar">
+            <div class="btc-chart-timeframes" aria-label="차트 시간대 선택">
+              <button type="button" class="active" aria-pressed="true" data-chart-tf="5m">5분</button>
+              <button type="button" aria-pressed="false" data-chart-tf="15m">15분</button>
+              <button type="button" aria-pressed="false" data-chart-tf="1h">1시간</button>
+              <button type="button" aria-pressed="false" data-chart-tf="4h">4시간</button>
+            </div>
+            <div class="btc-chart-layers" aria-label="차트 레이어 표시 설정">
+              <button type="button" class="active" aria-pressed="true" data-chart-layer="liquidity"><i class="liquidity"></i>유동성</button>
+              <button type="button" class="active" aria-pressed="true" data-chart-layer="structure"><i class="structure"></i>구조 신호</button>
+              <button type="button" class="active" aria-pressed="true" data-chart-layer="fvg"><i class="fvg"></i>FVG</button>
+              <button type="button" class="active" aria-pressed="true" data-chart-layer="plan"><i class="plan"></i>거래 플랜</button>
+            </div>
+          </div>
+
+          <div class="btc-chart-quote">
+            <strong id="btcChartTimeframeLabel">5분봉</strong>
+            <span id="btcChartOhlc">O — · H — · L — · C —</span>
+            <span id="btcChartHoverTime">최근 확정 캔들</span>
+            <em id="btcChartPlanState">SHADOW · 분석 후보 확인 중</em>
+          </div>
+
+          <div id="btcChartStage" class="btc-chart-stage">
+            <div id="btcTradingChart" class="btc-chart-canvas" role="region" aria-label="BTC USDT 무기한 선물 캔들 차트"></div>
+            <div id="btcChartFallback" class="btc-chart-fallback" hidden>
+              <strong>차트 모듈을 불러오지 못했습니다.</strong>
+              <span>시장 분석은 계속 갱신됩니다. 잠시 후 새로고침해 주세요.</span>
+            </div>
+          </div>
+
+          <div class="btc-chart-legend">
+            <span><i class="liquidity"></i>유동성 레벨</span>
+            <span><i class="sweep"></i>Sweep</span>
+            <span><i class="cisd"></i>CISD</span>
+            <span><i class="structure"></i>Displacement / 구조 변화</span>
+            <span><i class="fvg"></i>FVG 근거 구간</span>
+            <span><i class="plan"></i>후보 점선 / ACTIVE 실선</span>
+            <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts</a>
+            <strong id="btcChartAnnotationStatus">분석 데이터 연결 중</strong>
+          </div>
+        </section>
+
         <section class="panel btc-engine-panel" aria-label="ICT Decision Engine 진행 상태">
           <div class="btc-section-head btc-engine-head">
-            <div><p class="eyebrow">ICT DECISION ENGINE · V2 SHADOW</p><h2>현재 셋업 진행 상태</h2><p>Sweep·CISD·Displacement·MSS를 서로 다른 사건으로 추적합니다.</p></div>
+            <div><p class="eyebrow">ICT DECISION ENGINE · <span id="btcEngineLifecycle">V2 검증 상태 확인 중</span></p><h2>현재 셋업 진행 상태</h2><p>Sweep·CISD·Displacement·MSS를 서로 다른 사건으로 추적합니다.</p></div>
             <div class="btc-engine-meta"><span id="btcEngineModel">MODEL 1</span><span id="btcEngineMode">BALANCED</span></div>
           </div>
           <div class="btc-engine-summary">
@@ -116,6 +175,7 @@
     </div>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/vendor/lightweight-charts/lightweight-charts.standalone.production.js"></script>
   <script src="/bitcoin.js"></script>
 </body>
 </html>
