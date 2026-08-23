@@ -76,6 +76,13 @@ test("차트는 버튼과 드래그 핸들로 높이를 조절하고 설정을 �
   assert.match(script, /tooja\.trading\.chartHeight\.v1/);
 });
 
+test("Setup Score를 엔진 요약의 첫 카드로 배치하고 등급별 강조색을 적용한다", () => {
+  const summary = html.match(/<div class="btc-engine-summary">([\s\S]*?)<\/div>/)?.[1] || "";
+  assert.ok(summary.indexOf("btcEngineEdge") < summary.indexOf("btcEngineDecision"));
+  assert.match(script, /btcEngineEdge"\)\.className = `score-/);
+  assert.match(css, /#btcEngineEdge\.score-a/);
+});
+
 test("마커 원본 봉과 오버레이 가용 봉을 분리해 과거 구간에 소급 표시하지 않는다", () => {
   assert.match(script, /function sourceBarTime[\s\S]*if \(candle\.time >= target\) break/);
   assert.match(script, /function availabilityBarTime[\s\S]*if \(candle\.time >= target\) return candle\.time/);

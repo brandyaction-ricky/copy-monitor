@@ -216,14 +216,19 @@
 .btc-engine-head { align-items: center; }
 .btc-engine-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .btc-engine-meta span { padding: 6px 9px; border: 1px solid #315247; border-radius: 7px; color: #a8c8be; font: 800 8px monospace; }
-.btc-engine-summary { display: grid; grid-template-columns: .7fr 1fr 1.7fr 1.1fr; gap: 8px; margin-bottom: 14px; }
+.btc-engine-summary { display: grid; grid-template-columns: 1.1fr .7fr 1fr 1.7fr; gap: 8px; margin-bottom: 14px; }
 .btc-engine-summary article { min-width: 0; padding: 13px; border: 1px solid #223038; border-radius: 9px; background: rgba(7, 14, 18, .72); }
+.btc-engine-summary article.score { border-color: rgba(67, 215, 178, .42); background: rgba(18, 48, 41, .66); }
 .btc-engine-summary small { display: block; margin-bottom: 7px; color: #65747e; font: 800 8px monospace; }
 .btc-engine-summary strong { display: block; overflow: hidden; color: #e7edf0; font-size: 12px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .btc-engine-summary strong.long { color: var(--green); }
 .btc-engine-summary strong.short { color: var(--red); }
 .btc-engine-summary strong.wait { color: var(--warning); }
 .btc-engine-summary strong.blocked { color: #ff8da1; }
+.btc-engine-summary #btcEngineEdge { font-size: 14px; font-weight: 900; letter-spacing: -.02em; }
+.btc-engine-summary #btcEngineEdge.score-a,.btc-engine-summary #btcEngineEdge.score-b { color: var(--green); text-shadow: 0 0 14px rgba(47, 214, 173, .2); }
+.btc-engine-summary #btcEngineEdge.score-c { color: var(--warning); }
+.btc-engine-summary #btcEngineEdge.score-d { color: var(--red); }
 .btc-engine-pipeline { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
 .btc-engine-pipeline article { position: relative; display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 7px; min-width: 0; min-height: 62px; padding: 9px; border: 1px solid #23313a; border-radius: 9px; background: #0a1116; }
 .btc-engine-pipeline article i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #1b252c; color: #77858e; font-size: 9px; font-style: normal; font-weight: 900; }
