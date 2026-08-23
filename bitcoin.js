@@ -786,7 +786,9 @@ function renderDecisionEngine() {
   $b("btcEngineNext").textContent = engine.state?.nextCondition || "—";
   const band = engine.scoreBand || { grade: "—", label: "평가 중" };
   $b("btcEngineEdge").textContent = `${engine.score ?? 0}/100 · ${band.grade} · ${band.label}`;
-  $b("btcEngineEdge").className = `score-${String(band.grade || "d").toLowerCase()}`;
+  const scoreDirection = engine.direction === "SHORT" ? "short" : "long";
+  $b("btcEngineEdge").className = `score-${scoreDirection}`;
+  $b("btcEngineEdge").closest("article").className = `score ${scoreDirection}`;
   $b("btcEnginePipeline").innerHTML = (engine.pipeline || []).map((item, index) => `
     <article class="${String(item.status || "WAIT").toLowerCase()}">
       <i>${item.status === "PASS" ? "✓" : item.status === "FAIL" ? "×" : item.status === "OPTIONAL" ? "·" : index + 1}</i>
