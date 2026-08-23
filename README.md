@@ -23,7 +23,8 @@ GateScope 기반 Gate.io 무기한 선물 포지션 대시보드입니다.
 - 확정 캔들만 사용하며 Feature마다 `detectedAt`과 `confirmedAt`을 분리합니다.
 - CISD, Displacement, Internal Break, MSS는 서로 다른 Feature입니다.
 - `WAIT`와 `NO_TRADE`는 정상 출력입니다.
-- 유동성 목표로 기본 2R을 만들지 못하면 합성 목표 가격을 생성하지 않습니다.
+- HTF 정렬·프리미엄/디스카운트·스윕·CISD·변위·MSS·FVG는 100점 만점의 셋업 품질 가산점으로 평가합니다.
+- 구조 밖 손절과 실제 유동성 목표로 최소 1.2R을 만들지 못하면 합성 목표 가격을 생성하지 않습니다.
 - Setup Score는 컨플루언스 설명값이며 승률이 아닙니다.
 - 운영 DB는 아직 연결하지 않았습니다. 검수된 additive schema는 `db/migrations/001_ict_decision_engine_v2.sql`에 있으며 Supabase Preview Branch 검증 후 별도 승인이 필요합니다.
 

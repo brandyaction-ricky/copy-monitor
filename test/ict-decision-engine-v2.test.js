@@ -106,20 +106,20 @@ test("FVG는 세 번째 캔들 종가 이후에만 생성된다", () => {
   assert.equal(fvg.confirmedAt, new Date((600 + 300) * 1000).toISOString());
 });
 
-test("상태 머신은 순방향 전이만 기록하고 조건 미달은 WAIT로 유지한다", () => {
+test("상태 머신은 ICT 컨플루언스를 가산점으로 기록하고 FVG 전까지 대기한다", () => {
   const state = deriveSetupState({
     htfPassed: true, locationPassed: true, liquidityAvailable: true,
     sweep: { state: "RECLAIMED", levelType: "SSL" }, linkedCisd: { id: "c" },
     displacement: { id: "d" }, internalBreak: null, mss: null, fvg: null,
     retestReady: false, expired: false, mode: "BALANCED",
   });
-  assert.equal(state.state, "WAITING_MSS");
-  assert.equal(state.nextCondition, "Internal Swing 몸통 돌파 대기");
+  assert.equal(state.state, "DISPLACEMENT_CONFIRMED");
+  assert.equal(state.nextCondition, "방향성 FVG 또는 OB 타점 대기");
   assert.deepEqual(state.history.map((row) => row.sequence), state.history.map((_, index) => index + 1));
   assert.equal(state.history.some((row, index) => index > 0 && row.to === state.history[index - 1].from), false);
 });
 
-test("기존 유동성 TP가 2R을 못 만들면 합성 목표를 만들지 않고 NO_TRADE 처리한다", () => {
+test("기존 유동성 TP가 1.2R을 못 만들면 합성 목표를 만들지 않고 NO_TRADE 처리한다", () => {
   const candles = [c(0, 100, 101, 99, 100), c(300, 100, 101, 99, 100), c(600, 100, 101, 99, 100)];
   const fvg = { low: 99.5, high: 100.5, consequentEncroachment: 100 };
   const sweep = { extreme: 98 };
@@ -133,6 +133,21 @@ test("기존 유동성 TP가 2R을 못 만들면 합성 목표를 만들지 않�
   const decision = generateDecision({ direction: "LONG", mode: "BALANCED", setupState: { state: "ENTRY_READY" }, context, tradePlan: plan, score });
   assert.equal(decision.decision, "NO_TRADE");
   assert.ok(decision.missingConditions.includes("Minimum R:R"));
+});
+
+test("HTF·위치·스윕은 가산점이며 구조 손절과 기존 유동성 1.2R이 있으면 후보를 공유한다", () => {
+  const context = { htfPassed: false, locationPassed: false, liquidityAvailable: true, sweep: null, cisd: null, linkedCisd: null, displacement: {}, internalBreak: {}, mss: null, fvg: {} };
+  const tradePlan = { stopDistance: 100, riskViable: true, liquidityTargetAvailable: true, rrPassed: true, noChase: false, minimumRR: 1.2 };
+  const score = scoreSetup({ ...context, tradePlan }, parameters);
+  const decision = generateDecision({ direction: "SHORT", mode: "BALANCED", setupState: { state: "ENTRY_READY" }, context, tradePlan, score });
+  assert.equal(decision.decision, "SHORT");
+  assert.equal(decision.hardFilterPassed, true);
+  assert.equal(decision.shareEligible, true);
+  assert.ok(decision.score < 100);
+});
+
+test("점수 가중치는 100점 만점이다", () => {
+  assert.equal(Object.values(parameters.score).reduce((sum, value) => sum + value, 0), 100);
 });
 
 test("트레이딩 UI는 Hard Filter 통과 전 주문 실행 가격을 잠그고 분석 후보를 분리한다", () => {

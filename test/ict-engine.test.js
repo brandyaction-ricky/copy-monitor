@@ -99,7 +99,7 @@ test("ICT 실행 자격은 HTF·구조·상위 실행 TF와 최소 컨플루언�
   assert.equal(assessIctConfluence("SHORT", { htfBias: "LONG", structure, higherExecution: structure }).executionQualified, false);
 });
 
-test("단기 실행 계획은 구조 밖 하드 스탑·최소 1.5R·타깃 순서를 보장한다", () => {
+test("단기 실행 계획은 구조 밖 하드 스탑·최소 1.2R·타깃 순서를 보장한다", () => {
   const candles5 = Array.from({ length: 30 }, (_, index) => candle(index, 64700, 64820, 64620, 64700, 120));
   candles5[21] = candle(21, 64800, 64820, 64650, 64720, 160);
   const context = {
@@ -124,7 +124,7 @@ test("단기 실행 계획은 구조 밖 하드 스탑·최소 1.5R·타깃 순�
   };
   const plan = buildTradePlan("LONG", context, 82);
   assert.ok(plan.hardStop < plan.zone.low);
-  assert.ok(plan.targets[0].rr >= 1.5);
+  assert.ok(plan.targets[0].rr >= 1.2);
   assert.ok(plan.targets[0].price < plan.targets[1].price);
   assert.ok(plan.targets[1].price < plan.targets[2].price);
   assert.equal(plan.minimumRrMet, true);

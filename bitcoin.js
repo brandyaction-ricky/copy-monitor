@@ -701,8 +701,8 @@ function renderDecisionEngine() {
   $b("btcEngineDecision").className = decisionTone;
   $b("btcEngineState").textContent = engine.state?.stateLabel || engine.state?.state || "—";
   $b("btcEngineNext").textContent = engine.state?.nextCondition || "—";
-  const stats = engine.historicalStats || {};
-  $b("btcEngineEdge").textContent = `${stats.status || "N/A"} · 표본 ${stats.sampleSize ?? 0} · ${stats.confidence || "INSUFFICIENT"}`;
+  const band = engine.scoreBand || { grade: "—", label: "평가 중" };
+  $b("btcEngineEdge").textContent = `${engine.score ?? 0}/100 · ${band.grade} · ${band.label}`;
   $b("btcEnginePipeline").innerHTML = (engine.pipeline || []).map((item, index) => `
     <article class="${String(item.status || "WAIT").toLowerCase()}">
       <i>${item.status === "PASS" ? "✓" : item.status === "FAIL" ? "×" : item.status === "OPTIONAL" ? "·" : index + 1}</i>
@@ -714,6 +714,7 @@ function renderDecisionEngine() {
   const structure = engine.internalBreak;
   const fvg = engine.fvg;
   const missing = engine.missingConditions?.length ? engine.missingConditions.join(" · ") : "없음";
+  const bonusMissing = engine.bonusMissing?.length ? engine.bonusMissing.join(" · ") : "모든 가산점 충족";
   $b("btcEngineEvidence").innerHTML = `
     <div><span>HTF / Location</span><strong>${escapeBtc(engine.htf?.bias || "N/A")} · ${escapeBtc(engine.location?.zone || "N/A")}</strong></div>
     <div><span>Sweep</span><strong>${sweep ? `${escapeBtc(sweep.levelType)} · ${escapeBtc(sweep.state)} · ${numberText(sweep.penetrationAtr, 3)} ATR` : "N/A"}</strong></div>
@@ -721,7 +722,8 @@ function renderDecisionEngine() {
     <div><span>Displacement</span><strong>${displacement ? `${displacement.intrinsicScore}/100 · Range ${numberText(displacement.rangeAtr, 2)} ATR` : "N/A"}</strong></div>
     <div><span>Structure / MSS</span><strong>${structure ? escapeBtc(structure.eventType) : "N/A"} / ${engine.mss ? escapeBtc(engine.mss.eventType) : "N/A"}</strong></div>
     <div><span>Entry FVG</span><strong>${fvg ? `${money(fvg.low)}–${money(fvg.high)} · CE ${money(fvg.consequentEncroachment)}` : "N/A"}</strong></div>
-    <div class="wide"><span>미충족 Hard Filter</span><strong>${escapeBtc(missing)}</strong></div>
+    <div class="wide"><span>필수 안전조건</span><strong>${escapeBtc(missing === "없음" ? "통과 · 구조 손절 + R:R 1.2" : missing)}</strong></div>
+    <div class="wide"><span>미충족 가산점</span><strong>${escapeBtc(bonusMissing)}</strong></div>
     <div class="wide version"><span>검증 버전</span><strong>${escapeBtc(engine.engineVersion)} · ${escapeBtc(engine.parameterSetVersion)} · 점수는 승률 아님</strong></div>`;
 }
 
@@ -732,6 +734,29 @@ function renderPlan() {
   const tone = plan.direction === "LONG" ? "long" : "short";
   const executionEnabled = Boolean(bitcoinData?.decisionEngine?.executionEnabled);
   const executable = Boolean(executionEnabled && engine?.hardFilterPassed && engine?.state?.state === "ENTRY_READY" && engine?.decision === plan.direction && engine?.tradePlan);
+  const candidate = !executable && engine?.shareEligible && engine?.candidatePlan;
+  if (candidate) {
+    const modelPlan = engine.candidatePlan;
+    const targetRows = modelPlan.targets.map((target) => `<article><div><small>${escapeBtc(target.label)} · ${escapeBtc(target.source)}</small><strong>${money(target.price)}</strong></div><b>R:R ${numberText(target.rr, 2)}</b><p>기존 유동성 기준 분석 목표</p></article>`).join("");
+    const band = engine.scoreBand || { grade: "—", label: "평가 중" };
+    $b("btcPlanCard").className = `panel btc-plan-card ${tone} candidate`;
+    $b("btcPlanCard").innerHTML = `
+      <div class="btc-plan-hero">
+        <div><div class="btc-plan-labels"><span class="btc-plan-direction ${tone}">${plan.direction}</span><span>분석 후보 · 주문 비활성</span></div><h3>${engine.state?.state === "NO_CHASE" ? "추격 금지 타점" : "조건부 타점 포착"}</h3><p>타점 점수 ${engine.score}/100 · ${escapeBtc(band.grade)} · ${escapeBtc(band.label)} · 승률 아님</p></div>
+        <strong>${money(modelPlan.entryZone.low)}<i>—</i>${money(modelPlan.entryZone.high)}</strong>
+      </div>
+      <div class="btc-plan-level-grid">
+        <article><small>후보 진입 · FVG CE</small><strong>${money(modelPlan.entry)}</strong></article>
+        <article><small>현재 상태</small><strong>${escapeBtc(engine.state?.stateLabel || "관찰")}</strong></article>
+        <article><small>구조 손절</small><strong class="negative">${money(modelPlan.stop)}</strong></article>
+        <article><small>1차 목표 · R:R ${numberText(modelPlan.targets[0]?.rr, 2)}</small><strong>${money(modelPlan.targets[0]?.price)}</strong></article>
+      </div>
+      <div class="btc-plan-lock"><b>분석 후보 · 실제 주문 연결 없음</b><p>R:R 1.2 이상과 구조 손절은 충족했습니다. 점수가 낮을수록 포지션 축소 또는 추가 확인이 필요하며, NO_CHASE에서는 진입하지 않습니다.</p></div>
+      <section class="btc-plan-basis"><h4>미충족 가산점</h4><div>${(engine.bonusMissing?.length ? engine.bonusMissing : ["없음"]).map((item) => `<span>${escapeBtc(item)}</span>`).join("")}</div></section>
+      <section class="btc-targets"><h4>분할 익절 후보</h4><div>${targetRows}</div></section>`;
+    renderExecutionStrip();
+    return;
+  }
   if (!executable) {
     const missing = !executionEnabled
       ? "SHADOW 검증 중 · Walk-forward 통과 전 운영 실행 비활성"
@@ -742,7 +767,7 @@ function renderPlan() {
         <div><div class="btc-plan-labels"><span class="btc-plan-direction ${tone}">${plan.direction}</span><span>${escapeBtc(strategy.label)} · MODEL 1 후보</span></div><h3>실행 잠금</h3><p>현재 ${escapeBtc(engine?.decision || "WAIT")} · ${escapeBtc(engine?.state?.stateLabel || "조건 확인 중")} · Setup Score ${engine?.score ?? 0}/100</p></div>
         <strong class="btc-locked-value">조건 충족 전 비활성</strong>
       </div>
-      <div class="btc-plan-lock"><b>실행 가격 잠금 · 차트 점선은 주문 불가 후보</b><p>차트의 점선 진입·SL·TP는 분석용 candidatePlan입니다. Sweep → CISD → Displacement → ${engine?.mode === "CONSERVATIVE" ? "MSS" : "Internal Break"} → FVG 첫 Retrace → 기존 유동성 TP 2R 이상이 모두 확인된 ACTIVE 상태에서만 실선 실행 가격으로 전환됩니다.</p></div>
+      <div class="btc-plan-lock"><b>실행 가격 잠금 · 차트 점선은 주문 불가 후보</b><p>차트의 점선 진입·SL·TP는 분석용 candidatePlan입니다. 구조 손절과 기존 유동성 목표 R:R 1.2 이상만 필수이며, HTF·Location·Sweep·CISD·Displacement·구조·FVG는 100점 가산점으로 평가합니다.</p></div>
       <section class="btc-confirm-section"><h4>다음 확인 조건</h4><p>${escapeBtc(engine?.state?.nextCondition || "새 셋업 대기")}</p></section>
       <section class="btc-plan-basis"><h4>미충족 Hard Filter</h4><div>${escapeBtc(missing).split(" · ").map((item) => `<span>${item}</span>`).join("")}</div></section>
       <div class="btc-invalidation"><div><small>Historical Edge</small><p>N/A · 표본 0 · Walk-forward 미보정</p></div><div><small>실행 정책</small><p>확정 신호 이후 다음 캔들 시가 또는 확인 후 지정가</p></div></div>`;
@@ -783,15 +808,21 @@ function renderExecutionStrip() {
   const plan = strategy.plans[selectedPlan];
   const engine = currentDecisionPlan();
   const executable = Boolean(bitcoinData?.decisionEngine?.executionEnabled && engine?.hardFilterPassed && engine?.state?.state === "ENTRY_READY" && engine?.decision === plan.direction && engine?.tradePlan);
+  const candidate = !executable && engine?.shareEligible && engine?.candidatePlan;
+  const visiblePlan = executable ? engine.tradePlan : candidate ? engine.candidatePlan : null;
   const tone = verdictTone(engine?.decision);
-  const direction = executable ? `${engine.decision} · 실행 조건 충족` : `${engine?.decision || "WAIT"} · 실행 잠금`;
+  const direction = executable
+    ? `${engine.decision} · 실행 조건 충족`
+    : candidate
+      ? `${plan.direction} 후보 · ${engine.score}/100 · ${engine.state?.state === "NO_CHASE" ? "추격 금지" : "주문 비활성"}`
+      : `${engine?.decision || "WAIT"} · 후보 대기`;
   $b("btcFlowStrategy").textContent = `${strategy.label} · ${plan.direction}`;
   $b("btcFlowDirection").textContent = direction;
   $b("btcFlowDirection").className = tone;
-  $b("btcFlowEntry").textContent = executable ? `${money(engine.tradePlan.entryZone.low)} – ${money(engine.tradePlan.entryZone.high)}` : "— · 잠금";
-  $b("btcFlowStop").textContent = executable ? money(engine.tradePlan.stop) : "— · 잠금";
+  $b("btcFlowEntry").textContent = visiblePlan ? `${candidate ? "후보 " : ""}${money(visiblePlan.entryZone.low)} – ${money(visiblePlan.entryZone.high)}` : "— · 후보 대기";
+  $b("btcFlowStop").textContent = visiblePlan ? `${candidate ? "후보 " : ""}${money(visiblePlan.stop)}` : "— · 후보 대기";
   $b("btcFlowStop").className = "negative";
-  $b("btcFlowTarget").textContent = executable ? money(engine.tradePlan.targets[0]?.price) : "— · 잠금";
+  $b("btcFlowTarget").textContent = visiblePlan ? `${candidate ? "후보 " : ""}${money(visiblePlan.targets[0]?.price)}` : "— · 후보 대기";
   $b("btcFlowTarget").className = "positive";
 }
 
@@ -867,8 +898,8 @@ function renderSelectedStrategy() {
   $b("btcChecklistGuide").textContent = "PASS 단계만 순서대로 인정";
   $b("btcDataGuide").textContent = selectedStrategy === "swing" ? "4시간·일봉·펀딩" : "5분봉·호가·펀딩";
   $b("btcExecutionPrinciple").textContent = selectedStrategy === "swing"
-    ? "4H Context와 1H 실행을 분리하고, Sweep·CISD·Displacement·Internal Break·FVG Retrace가 순서대로 확인될 때만 실행합니다. 유동성 TP 기준 최소 2R 미만이면 NO_TRADE입니다."
-    : "1H Context와 5m 실행을 분리하고, Sweep·CISD·Displacement·Internal Break·FVG Retrace가 순서대로 확인될 때만 실행합니다. 유동성 TP 기준 최소 2R 미만이면 NO_TRADE입니다.";
+    ? "4H Context와 1H 실행을 분리합니다. 구조 손절과 기존 유동성 목표 R:R 1.2 이상은 필수이며, 나머지 ICT 근거는 100점 가산점으로 품질을 구분합니다."
+    : "1H Context와 5m 실행을 분리합니다. 구조 손절과 기존 유동성 목표 R:R 1.2 이상은 필수이며, 나머지 ICT 근거는 100점 가산점으로 품질을 구분합니다.";
   renderStrategyOverview();
   renderTimeframes();
   renderDecisionEngine();

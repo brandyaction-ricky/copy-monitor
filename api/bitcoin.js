@@ -393,8 +393,8 @@ function buildTradePlan(direction, context, score) {
   const eligibleTarget = (minimumRr) => liquidityTargets
     .filter((item) => rewardFor(item.price) / risk >= minimumRr)
     .sort((a, b) => rewardFor(a.price) - rewardFor(b.price))[0];
-  const firstLiquidity = eligibleTarget(1.5);
-  const target1 = firstLiquidity?.price ?? (direction === "LONG" ? entry + risk * 1.5 : entry - risk * 1.5);
+  const firstLiquidity = eligibleTarget(1.2);
+  const target1 = firstLiquidity?.price ?? (direction === "LONG" ? entry + risk * 1.2 : entry - risk * 1.2);
   const secondLiquidity = liquidityTargets
     .filter((item) => rewardFor(item.price) / risk >= 2.5 && rewardFor(item.price) > rewardFor(target1))
     .sort((a, b) => rewardFor(a.price) - rewardFor(b.price))[0];
@@ -462,7 +462,7 @@ function buildTradePlan(direction, context, score) {
     riskDistance: round(risk, 2),
     riskPercent: round(riskPercent, 3),
     riskViable,
-    minimumRrMet: Math.abs(target1 - entry) / risk >= 1.5,
+    minimumRrMet: Math.abs(target1 - entry) / risk >= 1.2,
     invalidation: `하드 스탑 ${round(stop, 2)} 즉시 실행 · 5분봉 종가가 구조 밖에서 마감하면 셋업 재사용 금지`,
     noChase: direction === "LONG"
       ? `${round(trigger + currentAtr * 0.55, 2)} 이상에서는 추격 매수 금지`
@@ -529,8 +529,8 @@ function buildSwingTradePlan(direction, context, score) {
   const eligibleTarget = (minimumRr) => liquidityTargets
     .filter((item) => rewardFor(item.price) / risk >= minimumRr)
     .sort((a, b) => rewardFor(a.price) - rewardFor(b.price))[0];
-  const firstLiquidity = eligibleTarget(1.5);
-  const target1 = firstLiquidity?.price ?? (direction === "LONG" ? entry + risk * 1.5 : entry - risk * 1.5);
+  const firstLiquidity = eligibleTarget(1.2);
+  const target1 = firstLiquidity?.price ?? (direction === "LONG" ? entry + risk * 1.2 : entry - risk * 1.2);
   const secondLiquidity = liquidityTargets
     .filter((item) => rewardFor(item.price) / risk >= 2.5 && rewardFor(item.price) > rewardFor(target1))
     .sort((a, b) => rewardFor(a.price) - rewardFor(b.price))[0];
@@ -601,7 +601,7 @@ function buildSwingTradePlan(direction, context, score) {
     riskDistance: round(risk, 2),
     riskPercent: round(riskPercent, 3),
     riskViable,
-    minimumRrMet: Math.abs(target1 - entry) / risk >= 1.5,
+    minimumRrMet: Math.abs(target1 - entry) / risk >= 1.2,
     invalidation: `하드 스탑 ${round(stop, 2)} 즉시 실행 · 4시간봉이 구조 밖에서 종가 마감하면 스윙 시나리오 폐기`,
     noChase: direction === "LONG"
       ? `${round(trigger + currentAtr * 0.7, 2)} 이상에서는 신규 스윙 추격 매수 금지`
@@ -623,7 +623,7 @@ function checklistFor(direction, frames, extras, plan) {
     { label: "RSI 과열 아님", pass: targetDirection === "LONG" ? frames.fiveMinute.rsi < 72 : frames.fiveMinute.rsi > 28 },
     { label: "펀딩 과열 아님", pass: targetDirection === "LONG" ? extras.funding < 0.06 : extras.funding > -0.06 },
     { label: "구조 손절 폭 적정", pass: plan.riskViable },
-    { label: "1차 목표 최소 R:R 1.5", pass: plan.minimumRrMet },
+    { label: "1차 목표 최소 R:R 1.2", pass: plan.minimumRrMet },
     { label: "추격 진입 구간 아님", pass: plan.status !== "NO_CHASE" },
   ];
 }
@@ -640,7 +640,7 @@ function swingChecklistFor(direction, frames, extras, plan) {
     { label: "4시간 RSI 과열 아님", pass: targetDirection === "LONG" ? frames.fourHour.rsi < 75 : frames.fourHour.rsi > 25 },
     { label: "펀딩 과열 아님", pass: targetDirection === "LONG" ? extras.funding < 0.08 : extras.funding > -0.08 },
     { label: "구조 손절 폭 적정", pass: plan.riskViable },
-    { label: "1차 목표 최소 R:R 1.5", pass: plan.minimumRrMet },
+    { label: "1차 목표 최소 R:R 1.2", pass: plan.minimumRrMet },
     { label: "추격 진입 구간 아님", pass: plan.status !== "NO_CHASE" },
   ];
 }
@@ -1030,7 +1030,7 @@ async function loadBitcoinAnalysis() {
         decisionEngine: model1ShortSelected,
         checklist,
         checklistScore: { passed, total: checklist.length },
-        executionRule: "1H Context → Location → Liquidity → Sweep → CISD → Displacement → Internal Break → FVG 첫 Retrace → 기존 유동성 TP 2R 이상 순서로만 실행합니다.",
+        executionRule: "구조 손절과 기존 유동성 목표 R:R 1.2 이상을 필수로 두고, HTF·Location·Sweep·CISD·Displacement·구조·FVG는 100점 가산점으로 평가합니다.",
       },
       swing: {
         label: "스윙",
@@ -1047,7 +1047,7 @@ async function loadBitcoinAnalysis() {
         decisionEngine: model1SwingSelected,
         checklist: swingChecklist,
         checklistScore: { passed: swingPassed, total: swingChecklist.length },
-        executionRule: "4H Context와 1H 실행에서 Sweep → CISD → Displacement → Internal Break → FVG 첫 Retrace가 순서대로 확인되고 유동성 TP 2R 이상일 때만 실행합니다.",
+        executionRule: "4H Context와 1H 실행에서 구조 손절과 기존 유동성 목표 R:R 1.2 이상을 필수로 두고, 나머지 ICT 근거는 100점 가산점으로 평가합니다.",
       },
     },
   };
