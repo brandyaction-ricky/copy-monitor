@@ -52,6 +52,12 @@ test("중복된 상단 요약과 상세 진입 시나리오 카드를 제거한�
   assert.doesNotMatch(html, /단기 진입 시나리오/);
 });
 
+test("트레이딩 상단에서는 BTC 고정 명칭을 사용하지 않는다", () => {
+  assert.doesNotMatch(html, /BTC Trading Desk|BTC Trading Decision Engine|BTC LIVE|BTC\/USDT · DECISION/);
+  assert.match(html, />Trading Desk</);
+  assert.match(html, /<h1>Trading Decision Engine<\/h1>/);
+});
+
 test("시간대별 방향 정렬에 미충족 가산점과 분할 익절 후보를 함께 표시한다", () => {
   assert.match(html, /id="btcTimeframeBonus"/);
   assert.match(html, /id="btcTimeframeTargets"/);

@@ -992,8 +992,6 @@ function renderSelectedStrategy() {
 function renderBitcoin() {
   selectedContract = bitcoinData.contract || selectedContract;
   const asset = selectedContract.replace(/_USDT$/, "");
-  $b("tradingHeroSymbol").textContent = `${asset}/USDT · DECISION & EXECUTION`;
-  $b("tradingHeroAsset").textContent = asset;
   $b("btcChartSymbol").textContent = `GATE.IO · ${selectedContract} PERPETUAL`;
   $b("btcSymbolInput").value = asset;
   renderFavoriteSymbols();
