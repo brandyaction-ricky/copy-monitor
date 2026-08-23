@@ -8,6 +8,24 @@ GateScope 기반 Gate.io 무기한 선물 포지션 대시보드입니다.
 - Gate.io 읽기 전용 API 구조 준비
 - API 키와 계좌 데이터는 저장소에 포함하지 않음
 - 실제 주문 실행 기능은 포함하지 않음
+- ICT Decision Engine v2를 기존 엔진과 병렬 Shadow 판단으로 운영 (`ICT_V2_LIFECYCLE=SHADOW` 기본)
+- `MODEL_1_SWEEP_REVERSAL`: HTF → Location → Liquidity → Sweep → CISD → Displacement → Internal Break → FVG Retrace
+- Hard Filter 통과 전에는 진입·손절·익절 가격을 사용자 화면에서 잠금
+- Historical Edge는 Walk-forward 백테스트 전까지 `N/A`로 표시
+- `ACTIVE` 승격 전에는 v2 조건이 모두 충족되어도 실행 가격을 잠금
+
+## ICT Decision Engine v2
+
+설계 검수 결론은 `수정 후 승인`입니다. 현재 운영 코드를 즉시 교체하지 않고 v2 판단을 병렬 계산합니다.
+
+- 확정 캔들만 사용하며 Feature마다 `detectedAt`과 `confirmedAt`을 분리합니다.
+- CISD, Displacement, Internal Break, MSS는 서로 다른 Feature입니다.
+- `WAIT`와 `NO_TRADE`는 정상 출력입니다.
+- 유동성 목표로 기본 2R을 만들지 못하면 합성 목표 가격을 생성하지 않습니다.
+- Setup Score는 컨플루언스 설명값이며 승률이 아닙니다.
+- 운영 DB는 아직 연결하지 않았습니다. 검수된 additive schema는 `db/migrations/001_ict_decision_engine_v2.sql`에 있으며 Supabase Preview Branch 검증 후 별도 승인이 필요합니다.
+
+상세 검수 결과는 `docs/ict-decision-engine-review.md`를 참고하세요.
 
 ## 환경 변수
 

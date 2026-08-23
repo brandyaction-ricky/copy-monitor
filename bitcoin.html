@@ -26,8 +26,8 @@
       <section class="hero bitcoin-hero">
         <div>
           <p class="eyebrow">BTC/USDT · DECISION &amp; EXECUTION</p>
-          <h1>BTC 트레이딩 플랜</h1>
-          <p>HTF 바이어스와 ICT 구조를 결합해 BOS·CHoCH, OB·FVG 첫 리테스트, 구조 손절과 최소 1.5R을 한 화면에서 확인합니다.</p>
+          <h1>BTC Trading Decision Engine</h1>
+          <p>현재 위치부터 Sweep·CISD·Displacement·MSS·FVG Retrace까지 순서대로 확인하고, 기존 유동성 목표로 최소 2R이 확보될 때만 실행 가격을 엽니다.</p>
         </div>
         <div class="btc-market-badge"><span>₿</span><div><small>Gate.io 무기한 선물</small><strong id="btcMarketStatus">데이터 연결 중</strong></div></div>
       </section>
@@ -45,9 +45,9 @@
             <p id="btcExecutionRule">—</p>
           </article>
           <article class="panel btc-score-card">
-            <small>방향·셋업 점수 <em>승률 아님</em></small>
+            <small>보조 방향 점수 <em>V1 · 승률 아님</em></small>
             <div><span>LONG <b id="btcLongScore">—</b></span><span>SHORT <b id="btcShortScore">—</b></span></div>
-            <p>HTF·유동성·구조·OB/FVG가 충분히 겹치지 않으면 관망합니다.</p>
+            <p>참고용 방향 점수입니다. 실제 실행 여부는 아래 v2 Hard Filter가 결정합니다.</p>
           </article>
         </section>
 
@@ -62,6 +62,21 @@
             <b id="btcSwingStatus">일봉·4시간 구조 · 1시간 실행</b>
             <span id="btcSwingMeta">보유 2~14일 · 데이터 연결 중</span>
           </button>
+        </section>
+
+        <section class="panel btc-engine-panel" aria-label="ICT Decision Engine 진행 상태">
+          <div class="btc-section-head btc-engine-head">
+            <div><p class="eyebrow">ICT DECISION ENGINE · V2 SHADOW</p><h2>현재 셋업 진행 상태</h2><p>Sweep·CISD·Displacement·MSS를 서로 다른 사건으로 추적합니다.</p></div>
+            <div class="btc-engine-meta"><span id="btcEngineModel">MODEL 1</span><span id="btcEngineMode">BALANCED</span></div>
+          </div>
+          <div class="btc-engine-summary">
+            <article><small>DECISION</small><strong id="btcEngineDecision">분석 중</strong></article>
+            <article><small>SETUP STATE</small><strong id="btcEngineState">—</strong></article>
+            <article class="wide"><small>NEXT CONDITION</small><strong id="btcEngineNext">—</strong></article>
+            <article><small>HISTORICAL EDGE</small><strong id="btcEngineEdge">N/A</strong></article>
+          </div>
+          <div id="btcEnginePipeline" class="btc-engine-pipeline"></div>
+          <div id="btcEngineEvidence" class="btc-engine-evidence"></div>
         </section>
 
         <section class="panel btc-execution-strip" aria-label="현재 실행 요약">

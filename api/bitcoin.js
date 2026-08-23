@@ -9,9 +9,11 @@ import {
   rangePosition,
   sessionReferenceLevels,
 } from "./_ict-engine.js";
+import { chooseModelDecision, evaluateSweepReversal } from "../lib/trading/model-1-sweep-reversal.js";
 
 const GATE_HOST = "https://api.gateio.ws/api/v4";
 const CONTRACT = "BTC_USDT";
+const ICT_V2_LIFECYCLE = process.env.ICT_V2_LIFECYCLE === "ACTIVE" ? "ACTIVE" : "SHADOW";
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const round = (value, digits = 2) => Number(finite(value).toFixed(digits));
@@ -593,6 +595,32 @@ function swingChecklistFor(direction, frames, extras, plan) {
   ];
 }
 
+function namedLiquidityReferences(session, candles5, scope = "SHORT_TERM") {
+  const latest = candles5.at(-1);
+  if (!latest) return [];
+  const current = new Date(latest.t * 1000);
+  const dayStart = Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate()) / 1000;
+  const dayOfWeek = current.getUTCDay();
+  const weekStart = dayStart - ((dayOfWeek + 6) % 7) * 86400;
+  const hour = current.getUTCHours();
+  const rows = scope === "SWING" ? [
+    session.previousWeekHigh ? { label: "PWH", price: session.previousWeekHigh, side: "BUY_SIDE", confirmedAt: new Date(weekStart * 1000).toISOString(), qualityScore: 92 } : null,
+    session.previousWeekLow ? { label: "PWL", price: session.previousWeekLow, side: "SELL_SIDE", confirmedAt: new Date(weekStart * 1000).toISOString(), qualityScore: 92 } : null,
+  ] : [
+    session.previousDayHigh ? { label: "PDH", price: session.previousDayHigh, side: "BUY_SIDE", confirmedAt: new Date(dayStart * 1000).toISOString(), qualityScore: 88 } : null,
+    session.previousDayLow ? { label: "PDL", price: session.previousDayLow, side: "SELL_SIDE", confirmedAt: new Date(dayStart * 1000).toISOString(), qualityScore: 88 } : null,
+    hour >= 8 && session.asiaHigh ? { label: "ASIA_HIGH", price: session.asiaHigh, side: "BUY_SIDE", confirmedAt: new Date((dayStart + 8 * 3600) * 1000).toISOString(), qualityScore: 82 } : null,
+    hour >= 8 && session.asiaLow ? { label: "ASIA_LOW", price: session.asiaLow, side: "SELL_SIDE", confirmedAt: new Date((dayStart + 8 * 3600) * 1000).toISOString(), qualityScore: 82 } : null,
+  ];
+  return rows.filter(Boolean);
+}
+
+function decisionStatus(result) {
+  if (result.decision === "LONG" || result.decision === "SHORT") return `${result.decision} · ${result.state.stateLabel}`;
+  if (result.decision === "NO_TRADE") return `NO_TRADE · ${result.state.stateLabel}`;
+  return `WAIT · ${result.state.stateLabel} · ${result.state.nextCondition}`;
+}
+
 async function loadBitcoinAnalysis() {
   const [tickers, raw5, raw15, raw1h, raw4h, raw1d, raw1w, orderBookRaw] = await Promise.all([
     gatePublic("/futures/usdt/tickers"),
@@ -636,6 +664,46 @@ async function loadBitcoinAnalysis() {
   const vwap = rollingVwap(candles5, 288);
   const funding = finite(ticker.funding_rate) * 100;
   const session = sessionReferenceLevels(candles5, candles1d) || {};
+  const shortModelLiquidity = namedLiquidityReferences(session, candles5, "SHORT_TERM");
+  const swingModelLiquidity = namedLiquidityReferences(session, candles5, "SWING");
+  const model1ShortLong = evaluateSweepReversal({
+    executionCandles: candles5,
+    contextCandles: candles1h,
+    direction: "LONG",
+    executionTimeframe: "5m",
+    contextTimeframe: "1h",
+    namedLiquidity: shortModelLiquidity,
+    mode: "BALANCED",
+  });
+  const model1ShortShort = evaluateSweepReversal({
+    executionCandles: candles5,
+    contextCandles: candles1h,
+    direction: "SHORT",
+    executionTimeframe: "5m",
+    contextTimeframe: "1h",
+    namedLiquidity: shortModelLiquidity,
+    mode: "BALANCED",
+  });
+  const model1ShortSelected = chooseModelDecision(model1ShortLong, model1ShortShort);
+  const model1SwingLong = evaluateSweepReversal({
+    executionCandles: candles1h,
+    contextCandles: candles4h,
+    direction: "LONG",
+    executionTimeframe: "1h",
+    contextTimeframe: "4h",
+    namedLiquidity: swingModelLiquidity,
+    mode: "BALANCED",
+  });
+  const model1SwingShort = evaluateSweepReversal({
+    executionCandles: candles1h,
+    contextCandles: candles4h,
+    direction: "SHORT",
+    executionTimeframe: "1h",
+    contextTimeframe: "4h",
+    namedLiquidity: swingModelLiquidity,
+    mode: "BALANCED",
+  });
+  const model1SwingSelected = chooseModelDecision(model1SwingLong, model1SwingShort);
   const structure5 = detectMarketStructure(candles5, { eventLookback: 80 });
   const structure15 = detectMarketStructure(candles15, { eventLookback: 80 });
   const structure1h = detectMarketStructure(candles1h, { eventLookback: 90 });
@@ -762,6 +830,27 @@ async function loadBitcoinAnalysis() {
     status,
     confidence: direction === "WAIT" ? Math.max(longScore, shortScore) : direction === "LONG" ? longScore : shortScore,
     scoreNotice: "방향·셋업 품질 점수이며 승률 확률이 아닙니다.",
+    decisionEngine: {
+      model: "MODEL_1_SWEEP_REVERSAL",
+      defaultMode: "BALANCED",
+      lifecycle: ICT_V2_LIFECYCLE,
+      executionEnabled: ICT_V2_LIFECYCLE === "ACTIVE",
+      reviewStatus: `수정 후 승인된 v2 Architecture · ${ICT_V2_LIFECYCLE} 판단`,
+      persistence: {
+        status: "SCHEMA_READY_NOT_CONNECTED",
+        reason: "운영 DB 자격증명이 없어 현재 요청에서는 상태를 영속화하지 않음",
+      },
+      shortTerm: {
+        selectedDirection: model1ShortSelected.direction,
+        selected: model1ShortSelected,
+        plans: { long: model1ShortLong, short: model1ShortShort },
+      },
+      swing: {
+        selectedDirection: model1SwingSelected.direction,
+        selected: model1SwingSelected,
+        plans: { long: model1SwingLong, short: model1SwingShort },
+      },
+    },
     scores: { long: longScore, short: shortScore },
     timeframes: frames,
     marketStructure: {
@@ -812,31 +901,35 @@ async function loadBitcoinAnalysis() {
         label: "단기",
         timeframe: "15분 구조 · 5분 실행",
         holdingPeriod: "수분~1일",
-        direction,
-        status,
+        direction: ["LONG", "SHORT"].includes(model1ShortSelected.decision) ? model1ShortSelected.decision : "WAIT",
+        decision: model1ShortSelected.decision,
+        status: decisionStatus(model1ShortSelected),
         htfBias: shortHtfBias,
-        setupQuality: primaryPlan.setupQuality,
+        setupQuality: model1ShortSelected.score,
         scores: { long: longScore, short: shortScore },
         plans: { long: longPlan, short: shortPlan },
-        primaryPlan: primaryPlan.direction,
+        primaryPlan: model1ShortSelected.direction,
+        decisionEngine: model1ShortSelected,
         checklist,
         checklistScore: { passed, total: checklist.length },
-        executionRule: "4H·1H 정렬 + 유동성 스윕 + 5분 BOS/CHoCH + 신선한 OB/FVG 첫 리테스트 + 최소 1.5R을 모두 확인합니다.",
+        executionRule: "1H Context → Location → Liquidity → Sweep → CISD → Displacement → Internal Break → FVG 첫 Retrace → 기존 유동성 TP 2R 이상 순서로만 실행합니다.",
       },
       swing: {
         label: "스윙",
         timeframe: "일봉·4시간 구조 · 1시간 실행",
         holdingPeriod: "2~14일",
-        direction: swingDirection,
-        status: swingStatus,
+        direction: ["LONG", "SHORT"].includes(model1SwingSelected.decision) ? model1SwingSelected.decision : "WAIT",
+        decision: model1SwingSelected.decision,
+        status: decisionStatus(model1SwingSelected),
         htfBias: swingHtfBias,
-        setupQuality: primarySwingPlan.setupQuality,
+        setupQuality: model1SwingSelected.score,
         scores: { long: swingLongScore, short: swingShortScore },
         plans: { long: swingLongPlan, short: swingShortPlan },
-        primaryPlan: primarySwingPlan.direction,
+        primaryPlan: model1SwingSelected.direction,
+        decisionEngine: model1SwingSelected,
         checklist: swingChecklist,
         checklistScore: { passed: swingPassed, total: swingChecklist.length },
-        executionRule: "일봉·4시간 바이어스와 4시간 OB/FVG가 정렬되고 1시간 BOS/CHoCH 및 첫 리테스트가 확인될 때만 실행합니다.",
+        executionRule: "4H Context와 1H 실행에서 Sweep → CISD → Displacement → Internal Break → FVG 첫 Retrace가 순서대로 확인되고 유동성 TP 2R 이상일 때만 실행합니다.",
       },
     },
   };
