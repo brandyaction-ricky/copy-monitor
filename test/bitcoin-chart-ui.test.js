@@ -91,6 +91,16 @@ test("의사결정 단계와 실행 확인 데이터를 데스크톱 한 줄에 
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.btc-analysis-row \{ grid-template-columns: 1fr; \}/);
 });
 
+test("실행 요약은 현재 셋업 진행 상태 바로 위에 배치한다", () => {
+  assert.ok(html.indexOf("btc-execution-strip") < html.indexOf("btc-engine-panel"));
+});
+
+test("5·15분은 단기, 1·4시간은 스윙 전략으로 자동 전환한다", () => {
+  assert.match(script, /\["1h", "4h"\]\.includes\(timeframe\) \? "swing" : "shortTerm"/);
+  assert.match(script, /selectedStrategy = nextStrategy/);
+  assert.match(script, /renderSelectedStrategy\(\)/);
+});
+
 test("마커 원본 봉과 오버레이 가용 봉을 분리해 과거 구간에 소급 표시하지 않는다", () => {
   assert.match(script, /function sourceBarTime[\s\S]*if \(candle\.time >= target\) break/);
   assert.match(script, /function availabilityBarTime[\s\S]*if \(candle\.time >= target\) return candle\.time/);

@@ -1137,8 +1137,17 @@ document.querySelectorAll("[data-strategy]").forEach((button) => button.addEvent
 document.querySelectorAll("[data-chart-tf]").forEach((button) => button.addEventListener("click", () => {
   const timeframe = button.dataset.chartTf;
   if (!bitcoinData?.chart?.timeframes?.[timeframe] || timeframe === selectedChartTimeframe) return;
+  const nextStrategy = ["1h", "4h"].includes(timeframe) ? "swing" : "shortTerm";
+  const strategyChanged = selectedStrategy !== nextStrategy;
+  selectedStrategy = nextStrategy;
   selectedChartTimeframe = timeframe;
-  renderTimeframes();
+  if (strategyChanged) selectedPlan = currentStrategy().primaryPlan === "SHORT" ? "short" : "long";
+  document.querySelectorAll("[data-plan]").forEach((item) => {
+    const active = item.dataset.plan === selectedPlan;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
+  });
+  renderSelectedStrategy();
   renderTradingChart({ fit: true });
 }));
 document.querySelectorAll("[data-chart-layer]").forEach((button) => button.addEventListener("click", () => {
