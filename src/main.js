@@ -52,22 +52,27 @@ function coinClass(contract) {
   return ['btc', 'eth', 'sol', 'xrp'].includes(symbol) ? symbol : 'other';
 }
 
-function positionCard(position) {
+function positionCard(position, totalNotional) {
   const side = position.side === 'SHORT' || number(position.size) < 0 ? 'SHORT' : 'LONG';
   const pnl = number(position.unrealised_pnl);
   const roe = number(position.roe);
   const symbol = coinSymbol(position.contract);
+  const weight = totalNotional > 0 ? Math.abs(number(position.notional)) / totalNotional * 100 : 0;
   return `<article class="position-card ${side.toLowerCase()}">
     <div class="card-head">
       <div class="identity"><span class="coin ${coinClass(position.contract)}">${escapeHtml(symbol.slice(0, 1))}</span><div><b>${escapeHtml(position.contract)}</b><small>USDT 무기한 선물</small></div></div>
       <span class="side ${side.toLowerCase()}">${side} <i>${number(position.leverage) || '—'}x</i></span>
     </div>
-    <div class="pnl-row"><div><span>미실현 손익</span><strong class="${pnl >= 0 ? 'positive' : 'negative'}">${formatUsd(pnl)}</strong></div><b class="roe ${roe >= 0 ? 'positive' : 'negative'}">${roe >= 0 ? '+' : ''}${roe.toFixed(2)}%</b></div>
+    <div class="pnl-row"><div><span>미실현 손익</span><strong class="${pnl >= 0 ? 'positive' : 'negative'}">${formatUsd(pnl)}</strong></div><div class="roe-wrap"><span>ROE</span><b class="roe ${roe >= 0 ? 'positive' : 'negative'}">${roe >= 0 ? '+' : ''}${roe.toFixed(2)}%</b></div></div>
     <div class="metrics">
       <div><span>진입가</span><b>${formatPrice(position.entry_price)}</b></div>
       <div><span>현재가</span><b>${formatPrice(position.mark_price)}</b></div>
       <div><span>포지션 규모</span><b>${formatCompact(position.notional)}</b></div>
       <div><span>계약 수량</span><b>${Math.abs(number(position.size)).toLocaleString('en-US')}</b></div>
+    </div>
+    <div class="weight-row">
+      <div><span>포지션 비중</span><b>${weight.toFixed(1)}%</b></div>
+      <div class="weight-track" aria-label="전체 포지션 중 ${weight.toFixed(1)}%"><i style="width:${Math.min(weight, 100).toFixed(2)}%"></i></div>
     </div>
     <div class="card-foot"><span><i></i>OPEN</span><time>${formatTime(position.observed_at)}</time></div>
   </article>`;
@@ -79,6 +84,7 @@ function render() {
   const longs = positions.filter((position) => position.side === 'LONG').length;
   const shorts = positions.length - longs;
   const pnl = positions.reduce((sum, position) => sum + number(position.unrealised_pnl), 0);
+  const totalNotional = positions.reduce((sum, position) => sum + Math.abs(number(position.notional)), 0);
   const latest = positions.reduce((timestamp, position) => Math.max(timestamp, new Date(position.observed_at || 0).getTime()), 0);
   const age = latest ? Date.now() - latest : Infinity;
 
@@ -96,7 +102,7 @@ function render() {
   byId('liveDot').classList.toggle('stale', age > STALE_AFTER_MS);
 
   byId('positionGrid').innerHTML = filtered.length
-    ? filtered.map(positionCard).join('')
+    ? filtered.map((position) => positionCard(position, totalNotional)).join('')
     : `<div class="state-card"><span class="empty-icon">◇</span><b>${state.filter === 'ALL' ? '현재 열린 포지션이 없습니다' : `${state.filter} 포지션이 없습니다`}</b><small>새 포지션이 확인되면 자동으로 표시됩니다.</small></div>`;
 }
 
@@ -145,4 +151,3 @@ document.addEventListener('click', (event) => {
 
 loadPositions();
 setInterval(loadPositions, REFRESH_INTERVAL_MS);
-
