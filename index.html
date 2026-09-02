@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#071019" />
+    <meta name="theme-color" content="#0a0a0b" />
     <meta name="description" content="maetajak 마스터 계정의 현재 포지션을 확인하는 읽기 전용 모니터입니다." />
     <title>마스터 포지션 | maetajak</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -12,13 +12,11 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <div class="ambient ambient-one"></div>
-    <div class="ambient ambient-two"></div>
     <main class="shell">
       <header class="topbar">
         <a class="brand" href="/" aria-label="maetajak 홈">
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span><b>maetajak</b><small>MASTER MONITOR</small></span>
+          <span><b>MAETAJAK</b><small>Master Position Monitor</small></span>
         </a>
         <div class="top-actions">
           <span class="readonly"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10m-8 0h9a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z"/></svg>읽기 전용</span>
@@ -53,7 +51,7 @@
         <div class="panel-head">
           <div>
             <h2>현재 보유 포지션 <span id="positionBadge">0</span></h2>
-            <p>마스터 계정에서 열려 있는 포지션만 표시합니다.</p>
+            <p>마스터 계정에서 열려 있는 포지션만 표시합니다. 비중은 전체 오픈 포지션 명목가치 합계 기준입니다.</p>
           </div>
           <div class="filters" role="group" aria-label="포지션 방향 필터">
             <button class="active" type="button" data-filter="ALL">전체</button>
