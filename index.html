@@ -1,36 +1,76 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0a0a0a" />
-  <title>GateScope — 포지션 대시보드</title>
-  <link rel="stylesheet" href="/styles.css" />
-  <link rel="stylesheet" href="/mobile-polish.css" />
-  <link rel="stylesheet" href="/bitwhale-theme.css" />
-</head>
-<body>
-  <main>
-    <header class="topbar">
-      <div><span class="live-dot"></span><span>시장 운영 중</span><time id="clock"></time></div>
-      <nav class="app-tabs" aria-label="주요 메뉴">
-        <a href="#positions" data-view="dashboard">포지션</a>
-        <a href="/bitcoin.html">트레이딩</a>
-      </nav>
-      <div class="top-actions"><span id="modeBadge" class="badge">연결 확인 중</span><button id="refreshButton">↻ <span>새로고침</span></button></div>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#071019" />
+    <meta name="description" content="maetajak 마스터 계정의 현재 포지션을 확인하는 읽기 전용 모니터입니다." />
+    <title>마스터 포지션 | maetajak</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="maetajak 홈">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span><b>maetajak</b><small>MASTER MONITOR</small></span>
+        </a>
+        <div class="top-actions">
+          <span class="readonly"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10m-8 0h9a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z"/></svg>읽기 전용</span>
+          <button id="refreshButton" class="refresh" type="button" aria-label="포지션 새로고침">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 9a7 7 0 0 1 11.6-2.6L20 9M4 15l2.3 2.6A7 7 0 0 0 17.9 15"/></svg>
+            <span>새로고침</span>
+          </button>
+        </div>
+      </header>
 
-    <div class="content app-view" id="view-dashboard" data-app-view="dashboard">
-      <section class="hero" id="overview"><div><p class="eyebrow">OVERVIEW</p><h1>포지션 대시보드</h1><p>Gate.io 선물 계정의 포지션과 리스크를 한눈에 확인하세요.</p></div><div class="account-pill"><span>G</span><div><small>조회 계정</small><strong>USDT 무기한 선물</strong></div></div></section>
-      <section class="panel chart-panel overview-value-panel"><div class="section-head"><div><p class="eyebrow">FUTURES REALIZED PERFORMANCE</p><h2>선물 자산 · 실현 수익</h2><p id="historyDescription">7월 1일부터 현재까지 입출금과 미실현손익을 제외한 순실현 성과입니다.</p></div><span class="period-label performance-day-pill">07.01 ~ 오늘 · 0일차</span></div><div class="overview-value-row"><div class="overview-balance"><small>Realized Futures Value</small><strong><span id="chartEnd">—</span> <em>USD</em></strong><p>Net Realized PNL <b id="chartTotalPnl">—</b> <small>since 07.01</small></p></div><div class="chart overview-sparkline" aria-label="7월 1일부터 현재까지 누적 순실현손익 변화 차트"><svg viewBox="0 0 900 220" preserveAspectRatio="none" role="img"><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#24e0ad" stop-opacity=".34"/><stop offset="1" stop-color="#24e0ad" stop-opacity="0"/></linearGradient></defs><path id="chartArea" class="area" d=""/><path id="chartLine" class="line" d=""/></svg><div id="chartAxis" class="chart-axis"></div></div></div><div class="chart-stats compact"><div><small>7월 1일 시작 선물자산</small><strong id="chartStart">—</strong></div><div><small>누적 순실현 성과</small><strong id="chartChange">—</strong></div></div></section>
-      <section class="summary-grid account-summary" aria-label="계좌 요약"><article class="metric margin-metric"><div class="metric-head"><span>사용 가능 증거금</span><b>▣</b></div><strong id="availableMargin">—</strong><p class="margin-caption"><span id="marginUsed">사용 중 —</span><em id="marginUsedPercent">—</em></p><div class="margin-usage-bar" role="progressbar" aria-label="증거금 사용률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="marginUsageFill" style="width:—"></i></div></article><article class="metric"><div class="metric-head"><span>활성 포지션</span><b>◆</b></div><strong id="positionCount">0</strong><p><em id="longShortCount">Long 0 · Short 0</em></p></article><article class="metric"><div class="metric-head"><span>미실현 손익 합계</span><b>↗</b></div><strong id="unrealizedPnlTotal">—</strong><p><span>현재 보유 포지션 합계</span></p></article><article class="metric"><div class="metric-head"><span>오늘 실현손익</span><b>✓</b></div><strong id="todayRealizedPnl">—</strong><p><span>오늘 00:00 KST 이후</span></p></article></section>
-      <section id="positions"><div class="section-head"><div><h2>현재 포지션 <span id="positionBadge">0</span></h2><p>활성화된 무기한 선물 포지션입니다.</p></div><div class="filter-pills"><button class="active" data-filter="all">전체</button><button data-filter="long">Long</button><button data-filter="short">Short</button></div></div><div id="positionGrid" class="position-grid"></div></section>
-      <div class="lower-grid trades-only"><section class="panel trade-timeline-panel" id="trades"><div class="trade-section-tabs"><span class="active">최근 체결</span></div><div class="trade-toolbar"><form id="tradeDateForm" class="trade-date-range" aria-label="체결 조회 기간"><label><span class="sr-only">시작일</span><input id="tradeDateStart" name="tradeFrom" type="date" required /></label><b aria-hidden="true">→</b><label><span class="sr-only">종료일</span><input id="tradeDateEnd" name="tradeTo" type="date" required /></label><button id="applyTradeDates" type="submit">적용</button></form><div class="trade-market-pill">USDT 무기한 선물 <span>▾</span></div><div class="filter-pills trade-filter-pills" aria-label="체결 방향 필터"><button class="active" data-trade-filter="all">전체</button><button data-trade-filter="buy">매수</button><button data-trade-filter="sell">매도</button></div></div><div id="tradeTimeline" class="trade-timeline" aria-live="polite"></div><button id="loadMoreTrades" class="load-more" type="button">더 보기</button></section></div>
-      <section class="panel asset-analysis" id="assetAnalysis"><div class="analysis-head"><div><p class="eyebrow">TRADING ANALYSIS</p><h2>Futures Assets Analysis</h2><p>7월 1일부터 Gate.io 선물 원장에서 집계한 실현 성과입니다.</p></div><span id="analysisPeriod" class="period-label">07.01 — TODAY</span></div><div class="analysis-summary"><article class="analysis-profit"><small>총이익</small><strong id="analysisTotalProfit">—</strong><span id="analysisProfitCount">—</span></article><div class="analysis-split-bar" aria-hidden="true"><i id="analysisProfitBar"></i><b id="analysisLossBar"></b></div><article class="analysis-loss"><small>총손실</small><strong id="analysisTotalLoss">—</strong><span id="analysisLossCount">—</span></article></div><div class="analysis-kpis"><article><small>순실현손익</small><strong id="analysisNetPnl">—</strong></article><article><small>승률</small><strong id="analysisWinRate">—</strong></article><article><small>평균 이익</small><strong id="analysisAverageProfit">—</strong></article><article><small>평균 손실</small><strong id="analysisAverageLoss">—</strong></article><article><small>손익비</small><strong id="analysisProfitFactor">—</strong></article><article><small>수수료 + 펀딩</small><strong id="analysisCosts">—</strong></article></div><div class="analysis-detail-grid"><section class="pnl-calendar-panel"><div class="analysis-subhead"><div><small>DAILY PNL</small><h3>일별 손익 캘린더</h3></div><div id="analysisMonthTabs" class="month-tabs" aria-label="월 선택"></div></div><div id="analysisMonthTotal" class="month-total"><span>월간 순손익</span><strong>—</strong></div><div class="calendar-weekdays" aria-hidden="true"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div id="analysisCalendar" class="pnl-calendar"></div></section><section class="pnl-ranking-panel"><div class="analysis-subhead"><div><small>PNL RANKING</small><h3>종목별 실현손익</h3></div><span>상위 8개</span></div><div id="analysisRanking" class="pnl-ranking"></div></section></div><p class="analysis-basis">총이익·총손실·승률·종목별 순위는 원장의 <code>pnl</code> 항목, 일별 순손익은 <code>pnl + fee + fund</code>를 기준으로 계산합니다. 입출금과 미실현손익은 제외합니다.</p></section>
-    </div>
+      <section class="intro">
+        <div>
+          <div class="eyebrow"><span id="liveDot" class="live-dot"></span><span id="connectionLabel">실시간 연결 중</span></div>
+          <h1>마스터 포지션</h1>
+          <p>Gate.io USDT 무기한 선물 · 현재 보유 포지션</p>
+        </div>
+        <div class="sync-note">
+          <span>마지막 동기화</span>
+          <strong id="lastObserved">확인 중</strong>
+          <small>10초마다 자동 갱신</small>
+        </div>
+      </section>
 
-  </main>
-  <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/dashboard-v22.js"></script>
-</body>
+      <section class="summary" aria-label="포지션 요약">
+        <article><span>보유 포지션</span><strong id="positionCount">—</strong><small>OPEN</small></article>
+        <article><span>포지션 방향</span><strong id="directionCount">—</strong><small id="directionDetail">Long — · Short —</small></article>
+        <article><span>미실현 손익</span><strong id="totalPnl">—</strong><small id="totalRoe">현재 포지션 합계</small></article>
+        <article><span>데이터 상태</span><strong id="freshness">확인 중</strong><small id="freshnessDetail">Worker 동기화 기준</small></article>
+      </section>
+
+      <section class="positions-panel">
+        <div class="panel-head">
+          <div>
+            <h2>현재 보유 포지션 <span id="positionBadge">0</span></h2>
+            <p>마스터 계정에서 열려 있는 포지션만 표시합니다.</p>
+          </div>
+          <div class="filters" role="group" aria-label="포지션 방향 필터">
+            <button class="active" type="button" data-filter="ALL">전체</button>
+            <button type="button" data-filter="LONG">Long</button>
+            <button type="button" data-filter="SHORT">Short</button>
+          </div>
+        </div>
+        <div id="positionGrid" class="position-grid" aria-live="polite">
+          <div class="state-card loading-state"><span class="loader"></span><b>포지션을 불러오고 있습니다</b><small>잠시만 기다려 주세요.</small></div>
+        </div>
+      </section>
+
+      <footer>
+        <div><span class="shield">✓</span><p><b>조회 전용 모니터</b><small>이 사이트에서는 주문, 포지션 변경, 카피 설정 및 회원 관리를 할 수 없습니다.</small></p></div>
+        <span>© maetajak</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>
