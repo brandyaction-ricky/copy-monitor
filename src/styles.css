@@ -55,7 +55,7 @@ h1, h2, p { margin: 0; }
 .sync-note span, .sync-note small { color: var(--muted); font-size: 10px; }
 .sync-note strong { margin: 5px 0 3px; font-size: 13px; line-height: 1.4; font-weight: 700; }
 
-.summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--line); }
+.summary { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--line); }
 .summary article { min-height: 112px; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; background: var(--panel); }
 .summary span { color: var(--muted); font-size: 11px; }
 .summary strong { margin: 14px 0 4px; font-size: 23px; line-height: 1.15; font-weight: 760; letter-spacing: -.03em; }
@@ -129,6 +129,7 @@ footer small { margin-top: 3px; color: var(--subtle); font-size: 9px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1180px) {
+  .summary { grid-template-columns: repeat(3, 1fr); }
   .position-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -151,14 +152,27 @@ footer small { margin-top: 3px; color: var(--subtle); font-size: 9px; }
   .intro h1 { font-size: 25px; }
   .summary article { min-height: 100px; padding: 13px; }
   .summary strong { font-size: 20px; }
-  .position-grid { grid-template-columns: 1fr; padding: 10px; }
+  .position-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 8px; }
+  .position-card { padding: 10px; border-radius: 9px; }
+  .card-head { align-items: flex-start; }
+  .identity { gap: 6px; }
+  .coin { width: 24px; height: 24px; font-size: 8px; }
+  .identity b { font-size: 10px; }
+  .identity small { font-size: 7px; }
+  .side { padding: 4px 5px; font-size: 7px; }
+  .pnl-row { margin: 14px 0 12px; }
+  .pnl-row span, .weight-row span { font-size: 7px; }
+  .pnl-row strong { font-size: 15px; }
+  .roe { font-size: 9px; }
+  .metrics div { padding: 7px; }
+  .metrics span, .card-foot span, .card-foot time { font-size: 7px; }
+  .metrics b { font-size: 8px; }
+  .weight-row { margin-top: 11px; }
+  .weight-row b { font-size: 9px; }
+  .card-foot { margin-top: 10px; }
   .panel-head { padding: 14px; }
   footer { padding: 18px 0; align-items: flex-start; }
   footer > span { display: none; }
-}
-
-@media (max-width: 370px) {
-  .summary { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
