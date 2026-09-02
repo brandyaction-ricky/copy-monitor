@@ -3,8 +3,17 @@ const ALLOWED_FIELDS = [
   'notional', 'unrealised_pnl', 'roe', 'observed_at',
 ];
 
+const ALLOWED_ACCOUNT_FIELDS = [
+  'total_equity', 'available_equity', 'used_equity', 'pnl_since_start',
+  'start_date', 'start_equity', 'net_deposits', 'day_number',
+];
+
 function sanitizePosition(position) {
   return Object.fromEntries(ALLOWED_FIELDS.map((field) => [field, position?.[field] ?? null]));
+}
+
+function sanitizeAccount(account) {
+  return Object.fromEntries(ALLOWED_ACCOUNT_FIELDS.map((field) => [field, account?.[field] ?? null]));
 }
 
 export default async function handler(request, response) {
@@ -33,10 +42,13 @@ export default async function handler(request, response) {
     if (!upstream.ok) throw new Error(payload?.message || 'Supabase RPC request failed');
     const positions = Array.isArray(payload?.positions) ? payload.positions.map(sanitizePosition) : [];
     response.setHeader('Cache-Control', 'public, s-maxage=5, stale-while-revalidate=10');
-    return response.status(200).json({ positions, observed_at: payload?.observed_at ?? null });
+    return response.status(200).json({
+      positions,
+      account: sanitizeAccount(payload?.account),
+      observed_at: payload?.observed_at ?? null,
+    });
   } catch (error) {
     console.error('public master position fetch failed', error);
     return response.status(502).json({ message: '현재 포지션 데이터를 불러오지 못했습니다.' });
   }
 }
-
