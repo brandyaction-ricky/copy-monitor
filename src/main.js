@@ -1,7 +1,7 @@
 const REFRESH_INTERVAL_MS = 10_000;
 const STALE_AFTER_MS = 60_000;
 
-const state = { positions: [], filter: 'ALL', loading: false, lastUpdated: null };
+const state = { positions: [], account: {}, filter: 'ALL', loading: false, lastUpdated: null };
 const byId = (id) => document.getElementById(id);
 
 function escapeHtml(value) {
@@ -83,7 +83,6 @@ function render() {
   const filtered = positions.filter((position) => state.filter === 'ALL' || position.side === state.filter);
   const longs = positions.filter((position) => position.side === 'LONG').length;
   const shorts = positions.length - longs;
-  const pnl = positions.reduce((sum, position) => sum + number(position.unrealised_pnl), 0);
   const totalNotional = positions.reduce((sum, position) => sum + Math.abs(number(position.notional)), 0);
   const latest = positions.reduce((timestamp, position) => Math.max(timestamp, new Date(position.observed_at || 0).getTime()), 0);
   const age = latest ? Date.now() - latest : Infinity;
@@ -92,8 +91,12 @@ function render() {
   byId('positionBadge').textContent = String(positions.length);
   byId('directionCount').textContent = positions.length ? `${longs} / ${shorts}` : '0 / 0';
   byId('directionDetail').textContent = `Long ${longs} · Short ${shorts}`;
-  byId('totalPnl').textContent = formatUsd(pnl);
-  byId('totalPnl').className = pnl >= 0 ? 'positive' : 'negative';
+  const periodPnl = number(state.account.pnl_since_start);
+  byId('periodPnl').textContent = formatUsd(periodPnl);
+  byId('periodPnl').className = periodPnl >= 0 ? 'positive' : 'negative';
+  byId('accountEquity').textContent = formatUsd(state.account.total_equity).replace(/^\+/, '');
+  byId('availableEquity').textContent = `가용 증거금 ${formatUsd(state.account.available_equity).replace(/^\+/, '')}`;
+  byId('tradingDay').textContent = state.account.day_number ? `${number(state.account.day_number)}일차` : '—';
   byId('lastObserved').textContent = latest ? formatTime(latest) : '동기화 기록 없음';
   byId('freshness').textContent = age <= STALE_AFTER_MS ? '정상' : latest ? '지연' : '대기';
   byId('freshness').className = age <= STALE_AFTER_MS ? 'positive' : 'warning';
@@ -129,6 +132,7 @@ async function loadPositions() {
       ...position,
       side: position.side === 'SHORT' || number(position.size) < 0 ? 'SHORT' : 'LONG',
     })) : [];
+    state.account = payload.account && typeof payload.account === 'object' ? payload.account : {};
     state.lastUpdated = new Date();
     render();
   } catch (error) {
